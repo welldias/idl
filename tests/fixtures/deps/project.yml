@@ -1,0 +1,14 @@
+project:
+  name: deps
+  version: 0.1.0
+  description:
+  requires-c: C17
+  dependencies:
+  - m
+build:
+  defines:
+  - VERSAO=7
+  include-dirs:
+  - third_party
+  cflags:
+  - -Wshadow

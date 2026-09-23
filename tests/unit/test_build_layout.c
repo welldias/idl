@@ -1,0 +1,145 @@
+#include "idl_test.h"
+#include "build_layout.h"
+
+static void test_source_lang(void) {
+    build_lang_t lang;
+    CHECK(build_source_lang("src/a.c", &lang));
+    CHECK_INT(lang, BUILD_LANG_C);
+    CHECK(build_source_lang("src/a.cpp", &lang));
+    CHECK_INT(lang, BUILD_LANG_CXX);
+    CHECK(build_source_lang("a.cc", &lang) && lang == BUILD_LANG_CXX);
+    CHECK(build_source_lang("a.cxx", &lang) && lang == BUILD_LANG_CXX);
+    CHECK(build_source_lang("a.c++", &lang) && lang == BUILD_LANG_CXX);
+
+    CHECK(!build_source_lang("src/a.h", &lang));
+    CHECK(!build_source_lang("src/a.hpp", &lang));
+    CHECK(!build_source_lang("Makefile", &lang));
+    CHECK(!build_source_lang("dir.c/arquivo", &lang));
+}
+
+static void write_full_project(void) {
+    idl_test_write("src/main.c", "");
+    idl_test_write("src/zeta.c", "");
+    idl_test_write("src/sub/alpha.cpp", "");
+    idl_test_write("src/util.h", "");
+    idl_test_write("src/notas.txt", "");
+    idl_test_write("src/bin/tool.c", "");
+    idl_test_write("src/bin/deep/ignorado.c", "");
+    idl_test_write("tests/test_um.c", "");
+    idl_test_write("tests/helpers/ignorado.c", "");
+    idl_test_write("include/api.h", "");
+}
+
+static void test_classification(void) {
+    idl_test_enter_dir("demo_layout");
+    write_full_project();
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, true));
+    CHECK_STR(layout.name, "demo_layout"); // sem project.yml: nome do diretório
+    CHECK(!layout.has_config);
+    CHECK(layout.has_include_dir);
+
+    CHECK_INT(layout.main.count, 1);
+    CHECK_STR(layout.main.items[0].path, "src/main.c");
+
+    CHECK_INT(layout.lib.count, 2); // ordenados pelo caminho
+    CHECK_STR(layout.lib.items[0].path, "src/sub/alpha.cpp");
+    CHECK_STR(layout.lib.items[0].stem, "alpha");
+    CHECK_INT(layout.lib.items[0].lang, BUILD_LANG_CXX);
+    CHECK_STR(layout.lib.items[1].path, "src/zeta.c");
+
+    CHECK_INT(layout.bins.count, 1);
+    CHECK_STR(layout.bins.items[0].stem, "tool");
+
+    CHECK_INT(layout.tests.count, 1);
+    CHECK_STR(layout.tests.items[0].stem, "test_um");
+
+    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_C, true));
+    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_CXX, true));
+
+    build_layout_clear(&layout);
+}
+
+static void test_without_tests(void) {
+    idl_test_enter_dir("no_tests");
+    write_full_project();
+    idl_test_write("tests/test_cpp.cpp", "");
+    platform_remove_tree("src/sub");
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, false));
+    CHECK_INT(layout.tests.count, 0);
+    CHECK(!build_layout_uses_lang(&layout, BUILD_LANG_CXX, false));
+    build_layout_clear(&layout);
+}
+
+static void test_name_from_config(void) {
+    idl_test_enter_dir("config_name");
+    idl_test_write("src/main.c", "");
+    idl_test_write(PROJECT_FILE_NAME, "project:\n  name: outro-nome\n  requires-c: C11\n");
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, false));
+    CHECK(layout.has_config);
+    CHECK_STR(layout.name, "outro-nome");
+    CHECK_STR(layout.config.requires_c, "C11");
+    CHECK(!layout.has_include_dir);
+    build_layout_clear(&layout);
+}
+
+static void check_load_fails(const char *dir) {
+    build_layout_t layout;
+    CHECK(!build_layout_load(&layout, false));
+    build_layout_clear(&layout);
+    (void)dir;
+}
+
+static void test_errors(void) {
+    idl_test_enter_dir("no_src");
+    CHECK(!build_layout_is_project());
+    check_load_fails("no_src");
+
+    idl_test_enter_dir("empty_src");
+    platform_make_dirs("src");
+    CHECK(build_layout_is_project());
+    check_load_fails("empty_src");
+
+    idl_test_enter_dir("two_mains");
+    idl_test_write("src/main.c", "");
+    idl_test_write("src/main.cpp", "");
+    check_load_fails("two_mains");
+
+    idl_test_enter_dir("bin_clash");
+    idl_test_write("src/main.c", "");
+    idl_test_write("src/bin/bin_clash.c", "");
+    check_load_fails("bin_clash");
+
+    idl_test_enter_dir("bad_config");
+    idl_test_write("src/main.c", "");
+    idl_test_write(PROJECT_FILE_NAME, "project: [\n");
+    check_load_fails("bad_config");
+}
+
+static void test_library_only(void) {
+    idl_test_enter_dir("lib_only");
+    idl_test_write("src/a.c", "");
+    idl_test_write("src/bin/cli.c", "");
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, false));
+    CHECK_INT(layout.main.count, 0);
+    CHECK_INT(layout.lib.count, 1);
+    CHECK_INT(layout.bins.count, 1);
+    build_layout_clear(&layout);
+}
+
+int main(void) {
+    RUN_TEST(test_source_lang);
+    RUN_TEST(test_classification);
+    RUN_TEST(test_without_tests);
+    RUN_TEST(test_name_from_config);
+    RUN_TEST(test_errors);
+    RUN_TEST(test_library_only);
+    return idl_test_report();
+}
