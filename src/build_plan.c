@@ -6,6 +6,21 @@
 
 #define BUILD_COMPILE_COMMANDS BUILD_OUT_DIR "/compile_commands.json"
 
+/* Shared library naming and flags for each platform. */
+#if defined(_WIN32)
+    #define BUILD_SHARED_PREFIX ""
+    #define BUILD_SHARED_EXTENSION ".dll"
+    #define BUILD_SHARED_NEEDS_PIC false
+#elif defined(__APPLE__)
+    #define BUILD_SHARED_PREFIX "lib"
+    #define BUILD_SHARED_EXTENSION ".dylib"
+    #define BUILD_SHARED_NEEDS_PIC true
+#else
+    #define BUILD_SHARED_PREFIX "lib"
+    #define BUILD_SHARED_EXTENSION ".so"
+    #define BUILD_SHARED_NEEDS_PIC true
+#endif
+
 struct build_unit_t {
     build_source_t *source;
     char *obj;      // build/<profile>/obj/<source>.o
@@ -179,7 +194,8 @@ static char *build_std_flag(const char *value, const char *key) {
     return flag;
 }
 
-static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit) {
+/* pic: the object also goes into the shared library, so it needs -fPIC. */
+static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit, bool pic) {
     compiler_command_t *cmd = &unit->cmd;
     project_config_t *config = &plan->layout.config;
     bool cxx = unit->source->lang == BUILD_LANG_CXX;
@@ -201,6 +217,8 @@ static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit) {
     }
     build_arg(cmd, "-Wall");
     build_arg(cmd, "-Wextra");
+    if (pic && BUILD_SHARED_NEEDS_PIC)
+        build_arg(cmd, "-fPIC");
 
     build_arg(cmd, "-I" BUILD_SRC_DIR);
     if (plan->layout.has_include_dir)
@@ -235,6 +253,9 @@ static bool build_plan_create_units(build_plan_t *plan) {
         return false;
     }
 
+    // A project without main is a library: its sources (group 1) also build the shared library.
+    bool library = layout->main.count == 0;
+
     for (word g = 0; g < group_count; g++) {
         for (word i = 0; i < groups[g]->count; i++) {
             build_unit_t *unit = &plan->units[plan->unit_count++];
@@ -242,7 +263,7 @@ static bool build_plan_create_units(build_plan_t *plan) {
             unit->obj = strutils_format("%s/obj/%s.o", plan->out_dir, unit->source->path);
             unit->dep = strutils_format("%s/obj/%s.d", plan->out_dir, unit->source->path);
             unit->stamp = strutils_format("%s/obj/%s.cmd", plan->out_dir, unit->source->path);
-            build_plan_compile_cmd(plan, unit);
+            build_plan_compile_cmd(plan, unit, library && groups[g] == &layout->lib);
         }
     }
     return true;
@@ -283,7 +304,7 @@ static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries,
 
 static bool build_plan_link_artifacts(build_plan_t *plan, word *linked) {
     build_layout_t *layout = &plan->layout;
-    word max = 1 + layout->bins.count + layout->tests.count;
+    word max = 2 + layout->bins.count + layout->tests.count;
 
     build_artifact_entry_t *entries = (build_artifact_entry_t *)calloc(max, sizeof(build_artifact_entry_t));
     if (!entries) {
@@ -297,6 +318,9 @@ static bool build_plan_link_artifacts(build_plan_t *plan, word *linked) {
     } else if (layout->lib.count) {
         build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_LIB, layout->name,
                                 strutils_format("%s/lib%s.a", plan->out_dir, layout->name), false, 0);
+        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_SHARED, layout->name,
+                                strutils_format("%s/%s%s%s", plan->out_dir, BUILD_SHARED_PREFIX, layout->name, BUILD_SHARED_EXTENSION),
+                                false, 0);
     }
 
     for (word i = 0; i < layout->bins.count; i++) {
@@ -347,6 +371,19 @@ static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entr
         cxx = cxx || plan->units[lib_first + i].source->lang == BUILD_LANG_CXX;
 
     build_arg(cmd, cxx ? plan->toolchain.cxx : plan->toolchain.cc);
+    if (entry->artifact.kind == BUILD_ARTIFACT_SHARED) {
+        const char *file_name = strrchr(entry->artifact.path, '/') + 1;
+#if defined(__APPLE__)
+        build_arg(cmd, "-dynamiclib");
+        build_arg(cmd, build_own(plan, strutils_format("-Wl,-install_name,@rpath/%s", file_name)));
+#elif defined(_WIN32)
+        build_arg(cmd, "-shared");
+        (void)file_name;
+#else
+        build_arg(cmd, "-shared");
+        build_arg(cmd, build_own(plan, strutils_format("-Wl,-soname,%s", file_name)));
+#endif
+    }
     if (entry->has_unit)
         build_arg(cmd, plan->units[entry->unit].obj);
     for (word i = 0; i < lib_count; i++)
@@ -373,7 +410,7 @@ static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries,
         return false;
     }
 
-    static const char *kind_names[] = { "exe", "bin", "lib", "test" };
+    static const char *kind_names[] = { "exe", "bin", "lib", "test", "shared" };
     word lib_first = build_plan_lib_first(plan);
     word job_count = 0;
 

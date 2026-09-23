@@ -18,8 +18,8 @@ const command_t command_list[] = {
     { "test", "Build and run the project's tests", handle_param_test }, 
     { "clean", "Remove the build directory", handle_param_clean }, 
     { "publish", "Upload distributions to an index", handle_param_publish }, 
-    { "cache", "Manage bx's cache", handle_param_cache }, 
-    { "self", "Manage the bx executable", handle_param_self }, 
+    { "cache", "Manage idl's cache", handle_param_cache }, 
+    { "self", "Manage the idl executable", handle_param_self }, 
     { "help", "Display documentation for a command", handle_param_help }, 
 };
 
@@ -32,6 +32,8 @@ int idl_execute_command(int argc, char *argv[]) {
     }
 
     char *cmd = argv[1];
+    if (strcmp(cmd, "-h") == 0 || strcmp(cmd, "--help") == 0)
+        return handle_param_help(argc, argv);
     
     for (int i = 0; i < commands_count; i++) {
         if (strcmp(command_list[i].name, cmd) == 0) {

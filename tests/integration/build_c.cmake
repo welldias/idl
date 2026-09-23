@@ -21,6 +21,12 @@ if(stray)
 endif()
 expect_exists("${PROJECT_DIR}/build/debug/obj/src/main.c.o")
 
+# An executable project builds no library and needs no -fPIC.
+expect_not_exists("${PROJECT_DIR}/build/debug/libc_basic.a")
+expect_not_exists("${PROJECT_DIR}/build/debug/${SHARED_PREFIX}c_basic${SHARED_EXT}")
+file(READ "${PROJECT_DIR}/build/debug/obj/src/util.c.cmd" util_cmd)
+expect_not_contains("${util_cmd}" "-fPIC")
+
 # Nothing changed: nothing is rebuilt.
 idl("${PROJECT_DIR}" ARGS build)
 expect_contains("${IDL_OUTPUT}" "Nothing to do")

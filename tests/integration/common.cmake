@@ -14,9 +14,20 @@ set(ENV{AR} "")
 
 if(CMAKE_HOST_WIN32)
 	set(EXE ".exe")
+	set(SHARED_PREFIX "")
+	set(SHARED_EXT ".dll")
+elseif(CMAKE_HOST_APPLE)
+	set(EXE "")
+	set(SHARED_PREFIX "lib")
+	set(SHARED_EXT ".dylib")
 else()
 	set(EXE "")
+	set(SHARED_PREFIX "lib")
+	set(SHARED_EXT ".so")
 endif()
+
+# Tools like readelf print translated text under other locales.
+set(ENV{LC_ALL} "C")
 
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")

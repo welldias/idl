@@ -13,7 +13,7 @@ my_project/
   tests/           each file becomes a test
 ```
 
-Without `src/main.*`, the project becomes the static library `lib<name>.a`. C and C++ can be mixed. Sources are compiled in parallel, and only what changed is rebuilt (including when a header is modified).
+Without `src/main.*`, the project is a library: idl builds both the static `lib<name>.a` and the shared `lib<name>.so` (`.dylib` on macOS, `.dll` on Windows). C and C++ can be mixed. Sources are compiled in parallel, and only what changed is rebuilt (including when a header is modified).
 
 ## Usage
 

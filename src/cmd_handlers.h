@@ -14,7 +14,6 @@ int handle_param_export(int argc, char *argv[]);
 int handle_param_tree(int argc, char *argv[]);
 int handle_param_tool(int argc, char *argv[]);
 int handle_param_c(int argc, char *argv[]);
-int handle_param_pip(int argc, char *argv[]);
 int handle_param_venv(int argc, char *argv[]);
 int handle_param_build(int argc, char *argv[]);
 int handle_param_test(int argc, char *argv[]);
