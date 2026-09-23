@@ -13,7 +13,6 @@ const command_t command_list[] = {
     { "tree", "Display the project's dependency tree", handle_param_tree }, 
     { "tool", "Run and install commands provided by C packages", handle_param_tool }, 
     { "c", "Manage C versions and installations", handle_param_c }, 
-    { "pip", "Manage C packages with a pip-compatible interface", handle_param_pip }, 
     { "venv", "Create a virtual environment", handle_param_venv }, 
     { "build", "Build the project", handle_param_build }, 
     { "test", "Build and run the project's tests", handle_param_test }, 
