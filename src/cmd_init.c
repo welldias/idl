@@ -1,5 +1,6 @@
 #include "project_file.h"
 #include "build_layout.h"
+#include "cmd_args.h"
 
 #define DIR_NAME_LEN 1024
 #define README_MD_NAME "README.md"
@@ -57,9 +58,14 @@ static bool init_write_main(const char *project_name) {
     return result;
 }
 
+/* idl init */
 int handle_param_init(int argc, char *argv[]) {
-    (void)argc;
-    (void)argv;
+    static const cmd_args_spec_t spec = { .max_positionals = 0 };
+    cmd_args_t args = {0};
+    bool parsed = cmd_args_parse(&args, argc, argv, 2, &spec);
+    cmd_args_clear(&args);
+    if (!parsed)
+        return 1;
 
     if (project_file_exist()) {
         fprintf(stderr, "Project is already initialized (%s exists)\n", PROJECT_FILE_NAME);

@@ -277,6 +277,43 @@ static void test_envs(void) {
     project_file_config_clean(&config);
 }
 
+static void test_test_targets(void) {
+    idl_test_enter_dir("test_targets");
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: t\n"
+        "targets:\n"
+        "  unit:\n"
+        "    type: test\n"
+        "    sources: [tests/*.c]\n"
+        "  suite:\n"
+        "    type: test\n"
+        "    single: true\n"
+        "    sources: [suite/*.c]\n"
+        "  unit:\n"
+        "    type: static-library\n"   // a library may share the name of a test
+        "    sources: [lib.c]\n");
+
+    project_config_t config = {0};
+    project_file_config_init(&config);
+    CHECK(project_file_read(&config));
+    CHECK_INT(config.targets.count, 3);
+    project_target_config_t *unit = find_target(&config, "unit");
+    CHECK(unit && unit->type == PROJECT_TARGET_TEST && !unit->single);
+    project_target_config_t *suite = find_target(&config, "suite");
+    CHECK(suite && suite->type == PROJECT_TARGET_TEST && suite->single);
+
+    // "single" survives a save.
+    CHECK(project_file_save(&config));
+    project_file_config_clean(&config);
+    project_file_config_init(&config);
+    CHECK(project_file_read(&config));
+    suite = find_target(&config, "suite");
+    CHECK(suite && suite->single);
+    CHECK(find_target(&config, "unit") && !find_target(&config, "unit")->single);
+    project_file_config_clean(&config);
+}
+
 static void check_invalid(const char *name, const char *content) {
     idl_test_enter_dir(name);
     idl_test_write(PROJECT_FILE_NAME, content);
@@ -301,6 +338,9 @@ static void test_invalid_files(void) {
     check_invalid("envs_list", "project:\n  name: x\nenvs: [A, B]\n");
     check_invalid("envs_value_list", "project:\n  name: x\nenvs:\n  A: [1, 2]\n");
     check_invalid("envs_twice", "project:\n  name: x\nenvs:\n  A: 1\n  A: 2\n");
+    check_invalid("single_not_test", "project:\n  name: x\ntargets:\n  a:\n    type: executable\n    single: true\n    sources: [a.c]\n");
+    check_invalid("single_not_bool", "project:\n  name: x\ntargets:\n  a:\n    type: test\n    single: yes\n    sources: [a.c]\n");
+    check_invalid("test_and_exe", "project:\n  name: x\ntargets:\n  a:\n    type: test\n    sources: [a.c]\n  a:\n    type: executable\n    sources: [b.c]\n");
     check_invalid("targets_empty", "project:\n  name: x\ntargets:\n");
     check_invalid("targets_list", "project:\n  name: x\ntargets: [a, b]\n");
     check_invalid("target_scalar", "project:\n  name: x\ntargets:\n  a: 1\n");
@@ -323,6 +363,7 @@ int main(void) {
     RUN_TEST(test_targets);
     RUN_TEST(test_same_name);
     RUN_TEST(test_envs);
+    RUN_TEST(test_test_targets);
     RUN_TEST(test_invalid_files);
     return idl_test_report();
 }

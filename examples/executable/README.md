@@ -33,5 +33,5 @@ idl run -- README.md                   # builds and runs with arguments
 echo "one two" | idl run               # reads stdin when no file is given
 idl run -- --version                   # shows the system name
 idl test                               # builds and runs tests/test_counter.c
-idl build --release                    # build/release/executable (-O2 -DNDEBUG)
+idl release                            # build/release/executable (-O2 -DNDEBUG)
 ```

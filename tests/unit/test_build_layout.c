@@ -315,6 +315,72 @@ static void test_explicit_targets(void) {
     check_load_fails("no_sources");
 }
 
+static void test_explicit_tests(void) {
+    idl_test_enter_dir("explicit_tests");
+    idl_test_write("lib/a.c", "");
+    idl_test_write("checks/test_one.c", "");
+    idl_test_write("checks/test_two.c", "");
+    idl_test_write("suite/runner.c", "");
+    idl_test_write("suite/cases.c", "");
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit_tests\n"
+        "targets:\n"
+        "  core:\n"
+        "    type: static-library\n"
+        "    sources: [lib/*.c]\n"
+        "  checks:\n"
+        "    type: test\n"
+        "    sources: [checks/*.c]\n"
+        "    defines: [CHECKS]\n"
+        "    link: [core]\n"
+        "  suite:\n"
+        "    type: test\n"
+        "    single: true\n"
+        "    sources: [suite/*.c]\n"
+        "    link: [core]\n");
+
+    // Without tests (idl build/run), the test targets do not exist.
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, false));
+    CHECK_INT(layout.targets.count, 1);
+    build_layout_clear(&layout);
+
+    // With tests: one executable per source of "checks", one for all of "suite".
+    CHECK(build_layout_load(&layout, true));
+    CHECK_INT(layout.targets.count, 4);
+    build_target_t *one = &layout.targets.items[1];
+    CHECK_STR(one->name, "test_one");
+    CHECK_INT(one->exe_kind, BUILD_ARTIFACT_TEST);
+    CHECK_INT(one->sources.count, 1);
+    CHECK_STR(one->obj_dir, "test/checks/");
+    CHECK(idl_test_list_has(&one->defines, "CHECKS"));
+    CHECK_INT(one->dep_count, 1);
+    CHECK_STR(layout.targets.items[2].name, "test_two");
+    build_target_t *suite = &layout.targets.items[3];
+    CHECK_STR(suite->name, "suite");
+    CHECK_INT(suite->exe_kind, BUILD_ARTIFACT_TEST);
+    CHECK_INT(suite->sources.count, 2);
+    build_layout_clear(&layout);
+
+    // Two tests with the same name would overwrite each other.
+    idl_test_write("more/test_one.c", "");
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit_tests\n"
+        "targets:\n"
+        "  checks:\n"
+        "    type: test\n"
+        "    sources: [checks/*.c]\n"
+        "  more:\n"
+        "    type: test\n"
+        "    sources: [more/*.c]\n");
+    CHECK(!build_layout_load(&layout, true));
+    build_layout_clear(&layout);
+    CHECK(build_layout_load(&layout, false)); // not an error when the tests are not built
+    build_layout_clear(&layout);
+}
+
 int main(void) {
     RUN_TEST(test_source_lang);
     RUN_TEST(test_source_for_os);
@@ -326,5 +392,6 @@ int main(void) {
     RUN_TEST(test_library_only);
     RUN_TEST(test_convention_targets);
     RUN_TEST(test_explicit_targets);
+    RUN_TEST(test_explicit_tests);
     return idl_test_report();
 }

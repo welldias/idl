@@ -40,7 +40,8 @@ word stream_available(stream_t *stream) {
 word stream_write(stream_t *stream, const byte *data, word size) {
     RETURN_VAL_IF_FAIL(stream, 0);
     RETURN_VAL_IF_FAIL(data, 0);
-    RETURN_VAL_IF_FAIL(size > 0, 0);
+    if (size == 0)
+        return 0; // e.g. an empty %s in stream_write_string
 
     word available = stream_available(stream);
     if (available < size) {

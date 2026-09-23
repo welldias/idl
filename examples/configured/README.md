@@ -18,13 +18,15 @@ configured/
   apps/
     measure/main.c, parse.c    -> executable "measure"
     report.cpp                 -> executable "report" (C++)
+  tests/
+    test_*.c                   -> one test program each (target "checks", type test)
 ```
 
 ## What each target says
 
 ```yaml
 geometry:
-  type: library                        # executable | static-library | shared-library | library
+  type: library                        # executable | static-library | shared-library | library | test
   sources: [engine/src/**/*.c]         # files and globs: *, ?, ** (any depth)
   exclude: [engine/src/experimental/**]
   include-dirs: [engine/src]           # -I for this target only
@@ -50,9 +52,15 @@ geometry:
 
 ```sh
 idl build                                   # all targets
-idl run --bin measure -- 0,0 3,0 3,4        # 3 points, perimeter 12.00
-idl run --bin report
-idl build --release                         # build/release/
+idl run measure -- 0,0 3,0 3,4              # 3 points, perimeter 12.00
+idl run report
+idl test                                    # builds and runs tests/test_*.c
+idl release                                 # optimized, into build/release/
+idl build measure                           # only measure and what it links
 ```
 
-With several executables, `idl run` needs `--bin`, unless one of them has the project's name.
+The `checks` target has `type: test`: `idl build` skips it, `idl test` builds each file of
+`tests/` as a program of its own (linked with `geometry`) and runs them. With `single: true`,
+all its sources would make a single test program instead.
+
+With several executables, `idl run` needs the name of one, unless one of them has the project's name.

@@ -58,7 +58,6 @@ static void test_resolve_deps(void) {
     list_add(&deps, strdup("m"));
     list_add(&deps, strdup("pthread"));
     list_add(&deps, strdup("dl"));
-    list_add(&deps, strdup("idl-missing-lib"));
 
     build_toolchain_t toolchain;
     build_toolchain_init(&toolchain, false, false);
@@ -68,8 +67,13 @@ static void test_resolve_deps(void) {
     CHECK(idl_test_list_has(&toolchain.ldflags, "-ldl"));
     CHECK(idl_test_list_has(&toolchain.ldflags, "-pthread"));
     CHECK(idl_test_list_has(&toolchain.cflags, "-pthread"));
-    // Unknown to pkg-config (or no pkg-config): uses -l<name>.
-    CHECK(idl_test_list_has(&toolchain.ldflags, "-lidl-missing-lib"));
+    build_toolchain_clear(&toolchain);
+
+    // A dependency that is not on the machine is an error, not a blind -l<name>.
+    list_add(&deps, strdup("idl-missing-lib"));
+    build_toolchain_init(&toolchain, false, false);
+    CHECK(!build_toolchain_resolve_deps(&toolchain, &deps));
+    CHECK(!idl_test_list_has(&toolchain.ldflags, "-lidl-missing-lib"));
 
     build_toolchain_clear(&toolchain);
     list_clear(&deps);

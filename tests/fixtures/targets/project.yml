@@ -29,3 +29,12 @@ targets:
     type: executable
     sources: [apps/host.c]
     link: [plugin]
+  checks:
+    type: test
+    sources: [checks/*.c]
+    link: [core, plugin]
+  suite:
+    type: test
+    single: true
+    sources: [suite/*.c]
+    link: [core]

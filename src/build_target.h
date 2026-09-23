@@ -59,8 +59,9 @@ typedef struct {
 build_target_t *build_targets_add(build_targets_t *targets, const char *name, build_target_type_t type);
 void build_targets_clear(build_targets_t *targets);
 
-/* Creates the targets of the "targets:" section, expanding their sources. */
-bool build_targets_from_config(build_targets_t *targets, project_config_t *config);
+/* Creates the targets of the "targets:" section, expanding their sources. Targets of type
+   test are only created <with_tests>: one executable per source, or one with all (single). */
+bool build_targets_from_config(build_targets_t *targets, project_config_t *config, bool with_tests);
 
 /* Resolves the links by name, rejects invalid links and cycles, and computes level and pic. */
 bool build_targets_resolve(build_targets_t *targets);

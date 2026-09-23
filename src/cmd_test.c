@@ -2,21 +2,34 @@
 #include "cmd_args.h"
 #include "build_plan.h"
 
-/* idl test [--release] [--project <dir>]: builds and runs each file in tests/. */
+/* idl test [<test>...] [--project <dir>]: builds (debug) and runs the tests: each file in tests/,
+   or the targets of type test in project.yml. With names, only those tests. */
 int handle_param_test(int argc, char *argv[]) {
+    static const char *const with_value[] = { BUILD_PROJECT_OPTIONS, nullptr };
+    static const cmd_args_spec_t spec = { .with_value = with_value, .max_positionals = -1 };
+
     cmd_args_t args = {0};
-    cmd_args_parse(&args, argc, argv, 2);
-
-    build_options_t options = {
-        .release = cmd_args_has_flag(&args, "release"),
-        .with_tests = true,
-    };
-
+    build_options_t options = { .with_tests = true };
     build_plan_t plan = {0};
     int exit_code = 1;
 
-    if (!build_enter_project_dir(cmd_args_get_value(&args, "project")) || !build_plan_run(&plan, &options))
+    if (!cmd_args_parse(&args, argc, argv, 2, &spec))
         goto cleanup;
+    options.targets = &args.positionals;
+
+    if (!build_enter_project_dir(&args) || !build_plan_run(&plan, &options))
+        goto cleanup;
+
+#if defined(_WIN32)
+    // The tests are in build/<profile>/tests: Windows finds the project's DLLs through PATH.
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd))) {
+        const char *path = getenv("PATH");
+        char *value = strutils_format("%s\\%s;%s", cwd, plan.out_dir, path ? path : "");
+        uv_os_setenv("PATH", value);
+        free(value);
+    }
+#endif
 
     word passed = 0;
     word failed = 0;
@@ -40,7 +53,10 @@ int handle_param_test(int argc, char *argv[]) {
     }
 
     if (passed + failed == 0) {
-        printf("No tests found in %s/.\n", BUILD_TESTS_DIR);
+        if (plan.layout.has_targets)
+            printf("No tests declared (targets of type test in %s).\n", PROJECT_FILE_NAME);
+        else
+            printf("No tests found in %s/.\n", BUILD_TESTS_DIR);
         exit_code = 0;
         goto cleanup;
     }

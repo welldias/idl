@@ -49,7 +49,12 @@ static const char *project_target_type_names[] = {
     [PROJECT_TARGET_STATIC_LIBRARY] = "static-library",
     [PROJECT_TARGET_SHARED_LIBRARY] = "shared-library",
     [PROJECT_TARGET_LIBRARY] = "library",
+    [PROJECT_TARGET_TEST] = "test",
 };
+
+bool project_target_is_executable(project_target_type_t type) {
+    return type == PROJECT_TARGET_EXECUTABLE || type == PROJECT_TARGET_TEST;
+}
 
 const char *project_target_type_name(project_target_type_t type) {
     return (word)type < SIZE_OF_ARRAY(project_target_type_names) ? project_target_type_names[type] : "?";
@@ -249,6 +254,8 @@ bool project_file_save(project_config_t *config) {
         int mapping = yaml_document_add_mapping(&doc, NULL, YAML_BLOCK_MAPPING_STYLE);
         built = built && mapping && project_file_yaml_pair_add(&doc, targets, target->name, mapping) &&
                 project_file_yaml_pair_add(&doc, mapping, "type", project_file_yaml_scalar_add(&doc, project_target_type_name(target->type)));
+        if (built && target->single)
+            built = project_file_yaml_pair_add(&doc, mapping, "single", project_file_yaml_scalar_add(&doc, "true"));
 
         for (word i = 0; built && i < SIZE_OF_ARRAY(project_file_target_lists); i++) {
             list_t *list = project_file_target_list(target, i);
@@ -312,7 +319,7 @@ static bool project_file_target_read(yaml_document_t *doc, yaml_node_t *key, yam
         yaml_node_t *pair_key = yaml_document_get_node(doc, pair->key);
         const char *key_name = pair_key && pair_key->type == YAML_SCALAR_NODE ? (const char *)pair_key->data.scalar.value : "";
 
-        bool known = strcmp(key_name, "type") == 0;
+        bool known = strcmp(key_name, "type") == 0 || strcmp(key_name, "single") == 0;
         for (word i = 0; !known && i < SIZE_OF_ARRAY(project_file_target_lists); i++)
             known = strcmp(key_name, project_file_target_lists[i].key) == 0;
         if (!known) {
@@ -340,21 +347,39 @@ static bool project_file_target_read(yaml_document_t *doc, yaml_node_t *key, yam
     }
     if (!type_found) {
         if (type)
-            log_error("%s:%zu: target '%s' has an unknown type '%s' (use executable, static-library, shared-library or library).", PROJECT_FILE_NAME, line, name, type);
+            log_error("%s:%zu: target '%s' has an unknown type '%s' (use executable, static-library, shared-library, library or test).", PROJECT_FILE_NAME, line, name, type);
         else
-            log_error("%s:%zu: target '%s' has no type (executable, static-library, shared-library or library).", PROJECT_FILE_NAME, line, name);
+            log_error("%s:%zu: target '%s' has no type (executable, static-library, shared-library, library or test).", PROJECT_FILE_NAME, line, name);
         free(type);
         return false;
     }
     free(type);
 
+    char *single = nullptr;
+    if (!project_file_yaml_string_get(doc, node, "single", &single))
+        return false;
+    if (single) {
+        bool valid = strcmp(single, "true") == 0 || strcmp(single, "false") == 0;
+        target->single = strcmp(single, "true") == 0;
+        free(single);
+        if (!valid) {
+            log_error("%s:%zu: 'single' of target '%s' must be true or false.", PROJECT_FILE_NAME, line, name);
+            return false;
+        }
+        if (target->type != PROJECT_TARGET_TEST) {
+            log_error("%s:%zu: 'single' is only valid for targets of type test ('%s' is %s).", PROJECT_FILE_NAME, line, name, project_target_type_name(target->type));
+            return false;
+        }
+    }
+
     // An executable and a library can share a name (lua and liblua.a), two of the same kind cannot.
-    bool executable = target->type == PROJECT_TARGET_EXECUTABLE;
+    // Tests count as executables.
+    bool executable = project_target_is_executable(target->type);
     for (list_item_t *item = config->targets.head; item && item->value != target; item = item->next) {
         project_target_config_t *other = (project_target_config_t *)item->value;
-        if (strcmp(other->name, name) == 0 && (other->type == PROJECT_TARGET_EXECUTABLE) == executable) {
-            log_error("%s:%zu: %s '%s' is declared twice (an executable and a library may share a name, two %s may not).",
-                      PROJECT_FILE_NAME, line, executable ? "executable" : "library", name, executable ? "executables" : "libraries");
+        if (strcmp(other->name, name) == 0 && project_target_is_executable(other->type) == executable) {
+            log_error("%s:%zu: target '%s' is declared twice (an executable or test and a library may share a name, two %s may not).",
+                      PROJECT_FILE_NAME, line, name, executable ? "executables or tests" : "libraries");
             return false;
         }
     }

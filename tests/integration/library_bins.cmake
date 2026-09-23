@@ -59,18 +59,30 @@ endif()
 run_program("${out}/calc_cli${EXE}" ARGS 1 2 3)
 expect_contains("${PROGRAM_OUTPUT}" "calc total=6")
 
-# With several executables, run requires --bin.
-idl("${PROJECT_DIR}" EXPECT 1 ARGS run)
-expect_contains("${IDL_OUTPUT}" "--bin")
+# Choosing a target in the convention: an executable of src/bin/ gets the library's objects, not its archives.
+idl("${PROJECT_DIR}" ARGS clean)
+idl("${PROJECT_DIR}" ARGS build calc_cli)
+expect_contains("${IDL_OUTPUT}" "Compiling src/calc.c")
+expect_contains("${IDL_OUTPUT}" "Linking build/debug/calc_cli")
+expect_not_contains("${IDL_OUTPUT}" "exit_with_3")
+expect_not_contains("${IDL_OUTPUT}" "Archiving")
+idl("${PROJECT_DIR}" ARGS build lib_bins)
+expect_contains("${IDL_OUTPUT}" "Archiving build/debug/liblib_bins.a")
+expect_contains("${IDL_OUTPUT}" "Linking build/debug/${shared_name}")
+idl("${PROJECT_DIR}" ARGS build)
 
-idl("${PROJECT_DIR}" ARGS run --bin calc_cli -- 10 20)
+# With several executables, run needs the name of one.
+idl("${PROJECT_DIR}" EXPECT 1 ARGS run)
+expect_contains("${IDL_OUTPUT}" "choose one: idl run <name>")
+
+idl("${PROJECT_DIR}" ARGS run calc_cli -- 10 20)
 expect_contains("${IDL_OUTPUT}" "calc total=30")
 
 # idl run forwards the program's exit code.
-idl("${PROJECT_DIR}" EXPECT 3 ARGS run --bin exit_with_3)
+idl("${PROJECT_DIR}" EXPECT 3 ARGS run exit_with_3)
 expect_contains("${IDL_OUTPUT}" "exiting with 3")
 
-idl("${PROJECT_DIR}" EXPECT 1 ARGS run --bin does_not_exist)
+idl("${PROJECT_DIR}" EXPECT 1 ARGS run does_not_exist)
 expect_contains("${IDL_OUTPUT}" "'does_not_exist' not found")
 
 # The library holds only the sources of src/ (not those of src/bin/).
@@ -94,7 +106,7 @@ if(AR_TOOL)
 	expect_contains("${members}" "name2.c.o")
 endif()
 
-# With a single executable, run does not need --bin.
+# With a single executable, run does not need its name.
 file(REMOVE "${PROJECT_DIR}/src/bin/exit_with_3.c")
 idl("${PROJECT_DIR}" ARGS run -- 5)
 expect_contains("${IDL_OUTPUT}" "calc2 total=5")

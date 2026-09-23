@@ -24,12 +24,14 @@ typedef enum {
     PROJECT_TARGET_STATIC_LIBRARY,
     PROJECT_TARGET_SHARED_LIBRARY,
     PROJECT_TARGET_LIBRARY,          // static and shared, from the same objects
+    PROJECT_TARGET_TEST,             // run by idl test: one executable per source, or one with all (single)
 } project_target_type_t;
 
 /* An item of the "targets:" section: what to compile and how. All lists hold strings. */
 typedef struct {
     char *name;                   // key of the item in "targets:"
     project_target_type_t type;
+    bool single;                  // tests: one executable with every source instead of one per source
     list_t sources;               // files and globs (*, ?, **)
     list_t exclude;               // globs removed from sources
     list_t include_dirs;          // -I<dir> for this target only
@@ -61,6 +63,7 @@ typedef struct {
 } project_config_t;
 
 const char *project_target_type_name(project_target_type_t type);
+bool project_target_is_executable(project_target_type_t type);
 
 void project_file_config_init(project_config_t *config);
 void project_file_config_clean(project_config_t *config);

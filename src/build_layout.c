@@ -193,7 +193,7 @@ bool build_layout_load(build_layout_t *layout, bool with_tests) {
         layout->name = build_layout_dir_name();
 
     layout->has_targets = layout->config.targets.count > 0;
-    bool loaded = layout->has_targets ? build_targets_from_config(&layout->targets, &layout->config)
+    bool loaded = layout->has_targets ? build_targets_from_config(&layout->targets, &layout->config, with_tests)
                                       : build_layout_load_convention(layout, with_tests);
     return loaded && build_targets_resolve(&layout->targets);
 }

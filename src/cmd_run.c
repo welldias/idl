@@ -2,7 +2,7 @@
 #include "cmd_args.h"
 #include "build_plan.h"
 
-/* idl run [--release] [--bin <name>] [--project <dir>] [-- program arguments] */
+/* idl run [<executable>] [--project <dir>] [-- program arguments]: builds (debug) and runs. */
 int handle_param_run(int argc, char *argv[]) {
     int separator = argc;
     for (int i = 2; i < argc; i++) {
@@ -12,19 +12,23 @@ int handle_param_run(int argc, char *argv[]) {
         }
     }
 
+    static const char *const with_value[] = { BUILD_PROJECT_OPTIONS, nullptr };
+    static const cmd_args_spec_t spec = { .with_value = with_value, .max_positionals = 1 };
+
     cmd_args_t args = {0};
-    cmd_args_parse(&args, separator, argv, 2);
-
-    build_options_t options = {
-        .release = cmd_args_has_flag(&args, "release"),
-    };
-    const char *bin_name = cmd_args_get_value(&args, "bin");
-
-    int exit_code = 1;
+    build_options_t options = {0};
     build_plan_t plan = {0};
     char **program_argv = nullptr;
+    int exit_code = 1;
 
-    if (!build_enter_project_dir(cmd_args_get_value(&args, "project")) || !build_plan_run(&plan, &options))
+    if (!cmd_args_parse(&args, separator, argv, 2, &spec))
+        goto cleanup;
+
+    // With a name, only that executable (and what it links) is built.
+    const char *bin_name = args.positionals.head ? (const char *)args.positionals.head->value : nullptr;
+    options.targets = &args.positionals;
+
+    if (!build_enter_project_dir(&args) || !build_plan_run(&plan, &options))
         goto cleanup;
 
     // With several executables, the one named after the project is the default.
@@ -46,7 +50,7 @@ int handle_param_run(int argc, char *argv[]) {
     if (!bin_name && executables > 1) {
         artifact = named;
         if (!artifact) {
-            log_error("There are several executables; choose one with --bin <name>.");
+            log_error("There are several executables; choose one: idl run <name>.");
             goto cleanup;
         }
     }

@@ -16,6 +16,7 @@ int handle_param_tool(int argc, char *argv[]);
 int handle_param_c(int argc, char *argv[]);
 int handle_param_venv(int argc, char *argv[]);
 int handle_param_build(int argc, char *argv[]);
+int handle_param_release(int argc, char *argv[]);
 int handle_param_test(int argc, char *argv[]);
 int handle_param_clean(int argc, char *argv[]);
 int handle_param_publish(int argc, char *argv[]);

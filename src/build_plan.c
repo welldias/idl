@@ -265,7 +265,7 @@ static bool build_plan_create_units(build_plan_t *plan) {
 
     word total = 0;
     for (word t = 0; t < targets->count; t++)
-        total += targets->items[t].sources.count;
+        total += plan->wanted[t] ? targets->items[t].sources.count : 0;
 
     plan->units = (build_unit_t *)calloc(total ? total : 1, sizeof(build_unit_t));
     word *closure = (word *)calloc(targets->count ? targets->count : 1, sizeof(word));
@@ -278,6 +278,8 @@ static bool build_plan_create_units(build_plan_t *plan) {
     for (word t = 0; t < targets->count; t++) {
         build_target_t *target = &targets->items[t];
         target->first_unit = plan->unit_count;
+        if (!plan->wanted[t])
+            continue;
 
         for (word i = 0; i < target->sources.count; i++) {
             build_unit_t *unit = &plan->units[plan->unit_count++];
@@ -334,6 +336,17 @@ static bool build_plan_link_artifacts(build_plan_t *plan, word *linked) {
 
     for (word t = 0; t < targets->count; t++) {
         build_target_t *target = &targets->items[t];
+        if (plan->wanted[t] == 0)
+            continue;
+
+        // A target that is only needed by another gives just what the linker uses from it.
+        if (plan->wanted[t] == 1) {
+            if (target->link_objects || target->type == BUILD_TARGET_OBJECTS)
+                continue;
+            build_plan_add_artifact(plan, entries, t, target->type == BUILD_TARGET_SHARED_LIBRARY ? BUILD_ARTIFACT_SHARED : BUILD_ARTIFACT_LIB);
+            continue;
+        }
+
         switch (target->type) {
             case BUILD_TARGET_OBJECTS:
                 break;
@@ -441,12 +454,15 @@ static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entr
     build_arg(cmd, "-o");
     build_arg(cmd, entry->artifact.path);
 
-    // Shared libraries of the project are found next to what uses them.
+    // The project's shared libraries are in build/<profile>, next to what uses them; tests are one level down.
     if (uses_shared) {
+        bool in_tests = entry->artifact.kind == BUILD_ARTIFACT_TEST;
 #if defined(__APPLE__)
-        build_arg(cmd, "-Wl,-rpath,@loader_path");
+        build_arg(cmd, in_tests ? "-Wl,-rpath,@loader_path/.." : "-Wl,-rpath,@loader_path");
 #elif !defined(_WIN32)
-        build_arg(cmd, "-Wl,-rpath,$ORIGIN");
+        build_arg(cmd, in_tests ? "-Wl,-rpath,$ORIGIN/.." : "-Wl,-rpath,$ORIGIN");
+#else
+        (void)in_tests; // Windows finds the DLLs through PATH (see idl test)
 #endif
     }
 
@@ -657,6 +673,92 @@ static void build_plan_write_compile_commands(build_plan_t *plan) {
 }
 
 /*****************************************************************************/
+/* Target selection (idl build <target>...)                                  */
+/*****************************************************************************/
+
+static bool build_plan_has_selection(build_plan_t *plan) {
+    return plan->options.targets && plan->options.targets->count > 0;
+}
+
+/* Lists the names that can be asked for, for the error message. */
+static char *build_plan_target_names(build_targets_t *targets) {
+    stream_t out = {0};
+    stream_init(&out, 64);
+    for (word i = 0; i < targets->count; i++) {
+        build_target_t *target = &targets->items[i];
+        if (target->type == BUILD_TARGET_OBJECTS)
+            continue;
+
+        bool repeated = false; // an executable and a library may share a name
+        for (word j = 0; j < i && !repeated; j++)
+            repeated = strcmp(targets->items[j].name, target->name) == 0;
+        if (!repeated)
+            stream_write_string(&out, "%s%s", stream_get_position(&out) ? ", " : "", target->name);
+    }
+    stream_write(&out, (const byte *)"", 1);
+    return (char *)out.data;
+}
+
+/* Marks the targets asked for by name (all of them without names) and those they link. */
+static bool build_plan_select(build_plan_t *plan) {
+    build_targets_t *targets = &plan->layout.targets;
+    plan->wanted = (byte *)calloc(targets->count ? targets->count : 1, 1);
+    word *closure = (word *)calloc(targets->count ? targets->count : 1, sizeof(word));
+    if (!plan->wanted || !closure) {
+        LOG_FATAL_NOT_ENOUGH_MEMORY();
+        free(closure);
+        return false;
+    }
+
+    if (!build_plan_has_selection(plan)) {
+        memset(plan->wanted, 2, targets->count);
+        free(closure);
+        return true;
+    }
+
+    for (list_item_t *item = plan->options.targets->head; item; item = item->next) {
+        const char *name = (const char *)item->value;
+        bool found = false;
+
+        for (word i = 0; i < targets->count; i++) {
+            if (targets->items[i].type == BUILD_TARGET_OBJECTS || strcmp(targets->items[i].name, name) != 0)
+                continue;
+
+            found = true;
+            plan->wanted[i] = 2;
+            word count = build_target_closure(targets, i, false, closure);
+            for (word c = 0; c < count; c++) {
+                if (plan->wanted[closure[c]] == 0)
+                    plan->wanted[closure[c]] = 1;
+            }
+        }
+
+        if (!found) {
+            char *names = build_plan_target_names(targets);
+            log_error("Target '%s' not found. Targets of the project: %s.", name, names[0] ? names : "(none)");
+            free(names);
+            free(closure);
+            return false;
+        }
+    }
+
+    free(closure);
+    return true;
+}
+
+static bool build_plan_uses_lang(build_plan_t *plan, build_lang_t lang) {
+    build_targets_t *targets = &plan->layout.targets;
+    for (word t = 0; t < targets->count; t++) {
+        build_sources_t *sources = &targets->items[t].sources;
+        for (word i = 0; plan->wanted[t] && i < sources->count; i++) {
+            if (sources->items[i].lang == lang)
+                return true;
+        }
+    }
+    return false;
+}
+
+/*****************************************************************************/
 /* API                                                                       */
 /*****************************************************************************/
 
@@ -673,9 +775,12 @@ bool build_plan_run(build_plan_t *plan, const build_options_t *options) {
     if (!build_layout_load(&plan->layout, options->with_tests))
         return false;
 
+    if (!build_plan_select(plan))
+        return false;
+
     build_layout_t *layout = &plan->layout;
-    bool need_c = build_layout_uses_lang(layout, BUILD_LANG_C);
-    bool need_cxx = build_layout_uses_lang(layout, BUILD_LANG_CXX);
+    bool need_c = build_plan_uses_lang(plan, BUILD_LANG_C);
+    bool need_cxx = build_plan_uses_lang(plan, BUILD_LANG_CXX);
 
     // The variables of envs: go into idl's own environment, so every process it starts from
     // here on (compiler, linker, pkg-config, and the program of run/test) inherits them.
@@ -687,7 +792,9 @@ bool build_plan_run(build_plan_t *plan, const build_options_t *options) {
         !build_plan_create_units(plan))
         return false;
 
-    build_plan_write_compile_commands(plan);
+    // With target names only part of the project is compiled: the file keeps describing all of it.
+    if (!build_plan_has_selection(plan))
+        build_plan_write_compile_commands(plan);
 
     printf("Building %s (%s)\n", layout->name, plan->profile);
     fflush(stdout);
@@ -736,6 +843,7 @@ void build_plan_clear(build_plan_t *plan) {
     build_toolchain_clear(&plan->toolchain);
     free(plan->out_dir);
     free(plan->env_stamp);
+    free(plan->wanted);
     memset(plan, 0, sizeof(build_plan_t));
 }
 
@@ -750,7 +858,12 @@ build_artifact_t *build_plan_find_artifact(build_plan_t *plan, build_artifact_ki
     return nullptr;
 }
 
-bool build_enter_project_dir(const char *dir) {
+bool build_enter_project_dir(cmd_args_t *args) {
+    RETURN_VAL_IF_FAIL(args, false);
+
+    const char *dir = cmd_args_get_value(args, "project");
+    if (!dir)
+        dir = cmd_args_get_value(args, "p");
     if (!dir)
         return true;
 

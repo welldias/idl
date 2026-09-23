@@ -35,3 +35,9 @@ targets:
     type: executable
     sources: [apps/report.cpp]
     link: [geometry]
+
+  # Each file in tests/ is a test program, run by "idl test".
+  checks:
+    type: test
+    sources: [tests/*.c]
+    link: [geometry]

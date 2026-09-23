@@ -68,7 +68,39 @@ static void build_target_copy_list(list_t *dest, list_t *src) {
         list_add(dest, strutils_strndup((const char *)item->value, (int)strlen((const char *)item->value)));
 }
 
-bool build_targets_from_config(build_targets_t *targets, project_config_t *config) {
+/* A target with the settings of a "targets:" item. Its objects go to obj/<dir>/<item name>/. */
+static build_target_t *build_targets_add_configured(build_targets_t *targets, project_target_config_t *source, const char *name,
+                                                    build_target_type_t type, const char *dir) {
+    build_target_t *target = build_targets_add(targets, name, type);
+    if (!target)
+        return nullptr;
+
+    free(target->obj_dir);
+    target->obj_dir = strutils_format("%s/%s/", dir, source->name);
+    build_target_copy_list(&target->include_dirs, &source->include_dirs);
+    build_target_copy_list(&target->public_include_dirs, &source->public_include_dirs);
+    build_target_copy_list(&target->defines, &source->defines);
+    build_target_copy_list(&target->cflags, &source->cflags);
+    build_target_copy_list(&target->cxxflags, &source->cxxflags);
+    build_target_copy_list(&target->ldflags, &source->ldflags);
+    build_target_copy_list(&target->libs, &source->libs);
+    build_target_copy_list(&target->link, &source->link);
+    return target;
+}
+
+/* Tests end up in build/<profile>/tests/<name>: two with the same name would overwrite each other. */
+static bool build_targets_test_name_free(build_targets_t *targets, const char *name, const char *source) {
+    for (word i = 0; i < targets->count; i++) {
+        build_target_t *other = &targets->items[i];
+        if (other->type == BUILD_TARGET_EXECUTABLE && other->exe_kind == BUILD_ARTIFACT_TEST && strcmp(other->name, name) == 0) {
+            log_error("Two tests would be named '%s' (%s and %s).", name, other->sources.count ? other->sources.items[0].path : other->name, source);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool build_targets_from_config(build_targets_t *targets, project_config_t *config, bool with_tests) {
     RETURN_VAL_IF_FAIL(targets, false);
     RETURN_VAL_IF_FAIL(config, false);
 
@@ -77,36 +109,60 @@ bool build_targets_from_config(build_targets_t *targets, project_config_t *confi
         [PROJECT_TARGET_STATIC_LIBRARY] = BUILD_TARGET_STATIC_LIBRARY,
         [PROJECT_TARGET_SHARED_LIBRARY] = BUILD_TARGET_SHARED_LIBRARY,
         [PROJECT_TARGET_LIBRARY] = BUILD_TARGET_LIBRARY,
+        [PROJECT_TARGET_TEST] = BUILD_TARGET_EXECUTABLE,
     };
 
     for (list_item_t *item = config->targets.head; item; item = item->next) {
         project_target_config_t *source = (project_target_config_t *)item->value;
-        build_target_t *target = build_targets_add(targets, source->name, types[source->type]);
-        if (!target)
-            return false;
+        bool test = source->type == PROJECT_TARGET_TEST;
+        if (test && !with_tests)
+            continue;
 
-        // By kind, since an executable and a library may have the same name.
-        free(target->obj_dir);
-        target->obj_dir = strutils_format("%s/%s/", target->type == BUILD_TARGET_EXECUTABLE ? "exe" : "lib", source->name);
-        build_target_copy_list(&target->include_dirs, &source->include_dirs);
-        build_target_copy_list(&target->public_include_dirs, &source->public_include_dirs);
-        build_target_copy_list(&target->defines, &source->defines);
-        build_target_copy_list(&target->cflags, &source->cflags);
-        build_target_copy_list(&target->cxxflags, &source->cxxflags);
-        build_target_copy_list(&target->ldflags, &source->ldflags);
-        build_target_copy_list(&target->libs, &source->libs);
-        build_target_copy_list(&target->link, &source->link);
-
+        build_sources_t sources = {0};
         char *owner = strutils_format("Target '%s'", source->name);
-        bool expanded = build_glob_expand(&source->sources, &source->exclude, owner, &target->sources);
+        bool expanded = build_glob_expand(&source->sources, &source->exclude, owner, &sources);
         free(owner);
-        if (!expanded)
-            return false;
-
-        if (target->sources.count == 0) {
+        if (expanded && sources.count == 0)
             log_error("Target '%s' has no sources to compile on this system.", source->name);
+        if (!expanded || sources.count == 0) {
+            build_sources_clear(&sources);
             return false;
         }
+
+        // By kind, since an executable and a library may have the same name.
+        const char *dir = test ? "test" : types[source->type] == BUILD_TARGET_EXECUTABLE ? "exe" : "lib";
+
+        if (test && !source->single) {
+            // Each source is a test program of its own, named after the file (like tests/ in the convention).
+            bool ok = true;
+            for (word i = 0; ok && i < sources.count; i++) {
+                build_source_t *file = &sources.items[i];
+                if (!build_targets_test_name_free(targets, file->stem, file->path)) {
+                    ok = false;
+                    break;
+                }
+
+                build_target_t *target = build_targets_add_configured(targets, source, file->stem, BUILD_TARGET_EXECUTABLE, dir);
+                if (target)
+                    target->exe_kind = BUILD_ARTIFACT_TEST;
+                ok = target && build_sources_add(&target->sources, file->path, file->lang);
+            }
+            build_sources_clear(&sources);
+            if (!ok)
+                return false;
+            continue;
+        }
+
+        build_target_t *target = nullptr;
+        if (!test || build_targets_test_name_free(targets, source->name, sources.items[0].path))
+            target = build_targets_add_configured(targets, source, source->name, types[source->type], dir);
+        if (!target) {
+            build_sources_clear(&sources);
+            return false;
+        }
+        if (test)
+            target->exe_kind = BUILD_ARTIFACT_TEST;
+        target->sources = sources; // the target takes ownership
     }
     return true;
 }

@@ -46,6 +46,19 @@ static void test_write_string(void) {
     stream_clear(&stream);
 }
 
+static void test_write_empty(void) {
+    stream_t stream = {0};
+    stream_init(&stream, 4);
+
+    // Writing nothing is not an error: an empty %s is common.
+    CHECK_INT(stream_write(&stream, (const byte *)"", 0), 0);
+    CHECK_INT(stream_get_position(&stream), 0);
+    stream_write_string(&stream, "[%s]", "");
+    stream_write(&stream, (const byte *)"", 1);
+    CHECK_STR((const char *)stream.data, "[]");
+    stream_clear(&stream);
+}
+
 static void test_reset(void) {
     stream_t stream = {0};
     stream_init(&stream, 8);
@@ -62,6 +75,7 @@ int main(void) {
     RUN_TEST(test_write_grows);
     RUN_TEST(test_read_and_position);
     RUN_TEST(test_write_string);
+    RUN_TEST(test_write_empty);
     RUN_TEST(test_reset);
     return idl_test_report();
 }

@@ -16,7 +16,8 @@ typedef struct {
 /* Picks the compilers: CC/CXX/AR from the environment, otherwise gcc/g++ and then clang/clang++. */
 bool build_toolchain_init(build_toolchain_t *toolchain, bool need_c, bool need_cxx);
 
-/* Turns project.dependencies into flags (pkg-config, falling back to -l<name>). */
+/* Turns project.dependencies into flags (see dep_system_find). A dependency that is not
+   found is an error. */
 bool build_toolchain_resolve_deps(build_toolchain_t *toolchain, list_t *dependencies);
 
 void build_toolchain_clear(build_toolchain_t *toolchain);

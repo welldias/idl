@@ -2,6 +2,7 @@
 #include "compiler_list.h"
 #include "compiler_command.h"
 #include "process_runner.h"
+#include "dep_system.h"
 
 static char *build_toolchain_pick(compiler_list_t *list, const char *env, compiler_type_t first, compiler_type_t second) {
     const char *value = getenv(env);
@@ -50,39 +51,11 @@ bool build_toolchain_init(build_toolchain_t *toolchain, bool need_c, bool need_c
     return result;
 }
 
-static void build_toolchain_add(list_t *list, const char *flag) {
-    list_add(list, strutils_strndup(flag, strlen(flag)));
-}
-
-static void build_toolchain_add_output(list_t *list, const char *output) {
-    if (output && output[0])
-        strutils_str_to_list(output, strlen(output), ' ', list);
-}
-
-/* Queries pkg-config. Returns false if it is missing or does not know the package. */
-static bool build_toolchain_pkg_config(build_toolchain_t *toolchain, const char *name) {
-    compiler_command_t cmds[2] = {0};
-    process_job_t jobs[2] = {0};
-    const char *modes[2] = { "--cflags", "--libs" };
-
-    for (int i = 0; i < 2; i++) {
-        compiler_command_init(&cmds[i], 4);
-        COMPILER_COMMANDS_APPEND(&cmds[i], "pkg-config", (char *)modes[i], (char *)name);
-        jobs[i].cmd = &cmds[i];
-        jobs[i].capture = true;
+static void build_toolchain_move(list_t *dest, list_t *src) {
+    for (list_item_t *item = src->head; item; item = item->next) {
+        list_add(dest, item->value);
+        item->value = nullptr; // now owned by <dest>
     }
-
-    bool found = process_runner_run(jobs, 2, 2);
-    if (found) {
-        build_toolchain_add_output(&toolchain->cflags, jobs[0].output);
-        build_toolchain_add_output(&toolchain->ldflags, jobs[1].output);
-    }
-
-    for (int i = 0; i < 2; i++) {
-        free(jobs[i].output);
-        compiler_command_clear(&cmds[i]);
-    }
-    return found;
 }
 
 bool build_toolchain_resolve_deps(build_toolchain_t *toolchain, list_t *dependencies) {
@@ -91,19 +64,18 @@ bool build_toolchain_resolve_deps(build_toolchain_t *toolchain, list_t *dependen
 
     for (list_item_t *item = dependencies->head; item; item = item->next) {
         const char *name = (const char *)item->value;
-
-        if (strcmp(name, "pthread") == 0 || strcmp(name, "threads") == 0) {
-            build_toolchain_add(&toolchain->cflags, "-pthread");
-            build_toolchain_add(&toolchain->ldflags, "-pthread");
-        } else if (strcmp(name, "m") == 0 || strcmp(name, "dl") == 0 || strcmp(name, "rt") == 0) {
-            char *flag = strutils_format("-l%s", name);
-            list_add(&toolchain->ldflags, flag);
-        } else if (!build_toolchain_pkg_config(toolchain, name)) {
-            log_warn("Dependency '%s' not found by pkg-config; using -l%s.", name, name);
-            list_add(&toolchain->ldflags, strutils_format("-l%s", name));
+        dep_system_t dep;
+        if (!dep_system_find(name, &dep)) {
+            log_error("Dependency '%s' not found (pkg-config, LD_LIBRARY_PATH or the system library directories).", name);
+            dep_system_clear(&dep);
+            return false;
         }
-    }
 
+        log_debug("Dependency %s found", name);
+        build_toolchain_move(&toolchain->cflags, &dep.cflags);
+        build_toolchain_move(&toolchain->ldflags, &dep.ldflags);
+        dep_system_clear(&dep);
+    }
     return true;
 }
 

@@ -30,7 +30,7 @@ project:
   name: app
 targets:
   core:
-    type: static-library       # executable | static-library | shared-library | library (static + shared)
+    type: static-library       # executable | static-library | shared-library | library (static + shared) | test
     sources: [lib/core/**/*.c, lib/common.c]
     exclude: [lib/core/legacy/**]
     include-dirs: [lib/core/private]       # this target only
@@ -50,7 +50,8 @@ targets:
 - `link` handles the link order, `-fPIC` for code that goes into shared libraries, and the rpath for the project's own shared libraries.
 - The `build:` section and `project.dependencies` apply to every target.
 - An executable and a library may have the same name (`lua` and `liblua.a`); `link: [lua]` always refers to the library.
-- `idl run --bin <target>` runs one of the executables.
+- Targets of `type: test` are built and run by `idl test` only: each source becomes a test program named after the file (like `tests/` in the convention), or, with `single: true`, all the sources make one program named after the target. A test passes when it exits with code 0.
+- `idl run <target>` runs one of the executables.
 
 See [examples/configured](examples/configured).
 
@@ -74,12 +75,17 @@ envs:
 
 ```sh
 idl init              # creates project.yml, README.md and src/main.c
-idl build             # builds into build/debug/ (--release: build/release/)
-idl run -- args       # builds and runs
-idl test              # builds and runs the tests in tests/
-idl add zlib          # adds a system library (via pkg-config)
+idl build             # builds the debug profile (-g -O0) into build/debug/
+idl build a b         # builds only targets a and b, and what they link
+idl release [a b]     # the same, optimized (-O2 -DNDEBUG), into build/release/
+idl run [exe] -- args # builds (debug) and runs; the name is needed with several executables
+idl test [names]      # builds (debug) and runs the tests (tests/, or targets of type test)
+idl add zlib m        # adds libraries installed on the machine (see below)
 idl clean             # removes build/
+idl help build        # how to use a command
 ```
+
+`idl add` looks for each library before adding it to `project.dependencies`, in this order: the known ones (`pthread`, `m`, `dl`, `rt`), `pkg-config`, the directories of `LD_LIBRARY_PATH`, and the system library directories (`/usr/lib`, `/usr/local/lib`...). A library that is not found is refused, and the build does the same search, failing with a clear message if a dependency is missing. Only the name is saved, so `project.yml` stays portable.
 
 `project.yml` is optional and adjusts what the convention doesn't cover:
 

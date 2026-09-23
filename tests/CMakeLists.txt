@@ -19,6 +19,7 @@ set(IDL_UNIT_TESTS
 	build_glob
 	build_target
 	build_env
+	dep_system
 	build_toolchain
 )
 

@@ -3,12 +3,13 @@
 #include "build_layout.h"
 #include "build_plan.h"
 
+/* idl clean [--project <dir>] */
 int handle_param_clean(int argc, char *argv[]) {
-    cmd_args_t args = {0};
-    cmd_args_parse(&args, argc, argv, 2);
+    static const char *const with_value[] = { BUILD_PROJECT_OPTIONS, nullptr };
+    static const cmd_args_spec_t spec = { .with_value = with_value, .max_positionals = 0 };
 
-    const char *project_dir = cmd_args_get_value(&args, "project");
-    bool result = build_enter_project_dir(project_dir);
+    cmd_args_t args = {0};
+    bool result = cmd_args_parse(&args, argc, argv, 2, &spec) && build_enter_project_dir(&args);
     cmd_args_clear(&args);
 
     if (!result)
