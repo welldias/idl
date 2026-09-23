@@ -48,6 +48,21 @@ bool build_layout_uses_lang(build_layout_t *layout, build_lang_t lang, bool with
 /* Tells whether the path is a known C/C++ source and its language. */
 bool build_source_lang(const char *path, build_lang_t *lang);
 
+/* Operating systems a platform-specific source can target (bit mask). */
+enum {
+    BUILD_OS_WINDOWS = 1 << 0,
+    BUILD_OS_LINUX = 1 << 1,
+    BUILD_OS_MACOS = 1 << 2,
+    BUILD_OS_UNIX = 1 << 3,  // any Unix-like system, Linux and macOS included
+};
+
+/* The systems idl is running on (e.g. BUILD_OS_LINUX | BUILD_OS_UNIX). */
+unsigned build_os_host(void);
+
+/* Tells whether the source is built on the given systems: a file name ending in
+   _win, _linux, _macos or _unix (e.g. "src/io_win.c") only builds on that system. */
+bool build_source_for_os(const char *path, unsigned os);
+
 /* Tells whether the current directory looks like an idl project (has src/ or project.yml). */
 bool build_layout_is_project(void);
 

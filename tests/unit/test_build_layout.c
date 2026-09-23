@@ -17,6 +17,82 @@ static void test_source_lang(void) {
     CHECK(!build_source_lang("dir.c/file", &lang));
 }
 
+static void test_source_for_os(void) {
+    unsigned on_linux = BUILD_OS_LINUX | BUILD_OS_UNIX;
+    unsigned on_macos = BUILD_OS_MACOS | BUILD_OS_UNIX;
+    unsigned on_windows = BUILD_OS_WINDOWS;
+
+    CHECK(build_source_for_os("src/code.c", on_windows));
+    CHECK(build_source_for_os("src/code.c", on_linux));
+
+    CHECK(build_source_for_os("src/code_win.c", on_windows));
+    CHECK(!build_source_for_os("src/code_win.c", on_linux));
+    CHECK(!build_source_for_os("src/code_win.c", on_macos));
+
+    CHECK(build_source_for_os("src/sub/code_linux.c", on_linux));
+    CHECK(!build_source_for_os("src/sub/code_linux.c", on_macos));
+    CHECK(!build_source_for_os("src/sub/code_linux.c", on_windows));
+
+    CHECK(build_source_for_os("src/code_macos.cpp", on_macos));
+    CHECK(!build_source_for_os("src/code_macos.cpp", on_linux));
+    CHECK(!build_source_for_os("src/code_macos.cpp", on_windows));
+
+    CHECK(build_source_for_os("src/code_unix.cpp", on_linux));
+    CHECK(build_source_for_os("src/code_unix.cpp", on_macos));
+    CHECK(build_source_for_os("src/code_unix.cpp", BUILD_OS_UNIX)); // e.g. FreeBSD
+    CHECK(!build_source_for_os("src/code_unix.cpp", on_windows));
+
+    // Only the suffix of the file name counts.
+    CHECK(build_source_for_os("src/win.c", on_linux));
+    CHECK(build_source_for_os("src/_win.c", on_linux));
+    CHECK(build_source_for_os("src/code_windows.c", on_linux));
+    CHECK(build_source_for_os("src/code_win/other.c", on_linux));
+    CHECK(build_source_for_os("src/code_Win.c", on_linux));
+
+    unsigned host = build_os_host();
+    CHECK(host != 0);
+#if defined(_WIN32)
+    CHECK_INT(host, BUILD_OS_WINDOWS);
+#elif defined(__APPLE__)
+    CHECK_INT(host, BUILD_OS_MACOS | BUILD_OS_UNIX);
+#elif defined(__linux__)
+    CHECK_INT(host, BUILD_OS_LINUX | BUILD_OS_UNIX);
+#endif
+}
+
+static void test_platform_sources(void) {
+    idl_test_enter_dir("platform_sources");
+    idl_test_write("src/main.c", "");
+    idl_test_write("src/io_win.c", "");
+    idl_test_write("src/io_linux.c", "");
+    idl_test_write("src/io_macos.c", "");
+    idl_test_write("src/io_unix.cpp", "");
+    idl_test_write("src/bin/tool_win.c", "");
+    idl_test_write("tests/test_io_unix.c", "");
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, true));
+#if defined(_WIN32)
+    CHECK_INT(layout.lib.count, 1);
+    CHECK_STR(layout.lib.items[0].path, "src/io_win.c");
+    CHECK_INT(layout.bins.count, 1);
+    CHECK_INT(layout.tests.count, 0);
+#elif defined(__APPLE__)
+    CHECK_INT(layout.lib.count, 2);
+    CHECK_STR(layout.lib.items[0].path, "src/io_macos.c");
+    CHECK_STR(layout.lib.items[1].path, "src/io_unix.cpp");
+    CHECK_INT(layout.bins.count, 0);
+    CHECK_INT(layout.tests.count, 1);
+#elif defined(__linux__)
+    CHECK_INT(layout.lib.count, 2);
+    CHECK_STR(layout.lib.items[0].path, "src/io_linux.c");
+    CHECK_STR(layout.lib.items[1].path, "src/io_unix.cpp");
+    CHECK_INT(layout.bins.count, 0);
+    CHECK_INT(layout.tests.count, 1);
+#endif
+    build_layout_clear(&layout);
+}
+
 static void write_full_project(void) {
     idl_test_write("src/main.c", "");
     idl_test_write("src/zeta.c", "");
@@ -136,6 +212,8 @@ static void test_library_only(void) {
 
 int main(void) {
     RUN_TEST(test_source_lang);
+    RUN_TEST(test_source_for_os);
+    RUN_TEST(test_platform_sources);
     RUN_TEST(test_classification);
     RUN_TEST(test_without_tests);
     RUN_TEST(test_name_from_config);

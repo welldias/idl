@@ -35,6 +35,44 @@ bool build_source_lang(const char *path, build_lang_t *lang) {
     return false;
 }
 
+static const struct {
+    const char *suffix;
+    unsigned os;
+} build_os_suffixes[] = {
+    { "_win", BUILD_OS_WINDOWS },
+    { "_linux", BUILD_OS_LINUX },
+    { "_macos", BUILD_OS_MACOS },
+    { "_unix", BUILD_OS_UNIX },
+};
+
+unsigned build_os_host(void) {
+#if defined(_WIN32)
+    return BUILD_OS_WINDOWS;
+#elif defined(__APPLE__)
+    return BUILD_OS_MACOS | BUILD_OS_UNIX;
+#elif defined(__linux__)
+    return BUILD_OS_LINUX | BUILD_OS_UNIX;
+#else
+    return BUILD_OS_UNIX;
+#endif
+}
+
+bool build_source_for_os(const char *path, unsigned os) {
+    RETURN_VAL_IF_FAIL(path, false);
+
+    const char *name = strrchr(path, '/');
+    name = name ? name + 1 : path;
+    const char *dot = strrchr(name, '.');
+    word stem_len = dot ? (word)(dot - name) : strlen(name);
+
+    for (word i = 0; i < SIZE_OF_ARRAY(build_os_suffixes); i++) {
+        word suffix_len = strlen(build_os_suffixes[i].suffix);
+        if (stem_len > suffix_len && strncmp(name + stem_len - suffix_len, build_os_suffixes[i].suffix, suffix_len) == 0)
+            return (os & build_os_suffixes[i].os) != 0;
+    }
+    return true;
+}
+
 static bool build_sources_add(build_sources_t *sources, const char *path, build_lang_t lang) {
     if (sources->count == sources->capacity) {
         word capacity = sources->capacity ? sources->capacity * 2 : 16;
@@ -90,6 +128,11 @@ static void build_layout_on_file(const char *full_path, void *arg) {
     build_lang_t lang;
     if (!build_source_lang(path, &lang))
         return;
+
+    if (!build_source_for_os(path, build_os_host())) {
+        log_debug("%s skipped: built only on another system.", path);
+        return;
+    }
 
     const char *rest = path + strlen(scan->root) + 1; // path inside src/ or tests/
     build_sources_t *target = nullptr;

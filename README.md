@@ -13,7 +13,11 @@ my_project/
   tests/           each file becomes a test
 ```
 
+Sources whose name ends in a platform suffix are only built on that platform: `*_win.c` on Windows, `*_linux.c` on Linux, `*_macos.c` on macOS and `*_unix.c` on any Unix-like system (Linux and macOS included). This applies to `src/`, `src/bin/` and `tests/`, in C and C++.
+
 Without `src/main.*`, the project is a library: idl builds both the static `lib<name>.a` and the shared `lib<name>.so` (`.dylib` on macOS, `.dll` on Windows). C and C++ can be mixed. Sources are compiled in parallel, and only what changed is rebuilt (including when a header is modified).
+
+See [examples/executable](examples/executable) and [examples/library](examples/library) for complete projects built without any configuration file.
 
 ## Usage
 
