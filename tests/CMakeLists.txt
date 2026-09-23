@@ -18,6 +18,7 @@ set(IDL_UNIT_TESTS
 	build_layout
 	build_glob
 	build_target
+	build_env
 	build_toolchain
 )
 
@@ -46,6 +47,7 @@ set(IDL_INTEGRATION_TESTS
 	clean
 	toolchain_env
 	targets
+	envs
 )
 
 foreach(name ${IDL_INTEGRATION_TESTS})

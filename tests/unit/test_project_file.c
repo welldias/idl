@@ -236,6 +236,47 @@ static void test_same_name(void) {
     project_file_config_clean(&config);
 }
 
+static void test_envs(void) {
+    idl_test_enter_dir("envs");
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: envs\n"
+        "envs:\n"
+        "  PATH: /opt/bin:${PATH}\n"
+        "  SOURCE_DATE_EPOCH: 0\n"
+        "  lower_case: kept\n"
+        "  EMPTY:\n");
+
+    project_config_t config = {0};
+    project_file_config_init(&config);
+    CHECK(project_file_read(&config));
+    CHECK_INT(config.envs.count, 4);
+
+    const char *names[] = { "PATH", "SOURCE_DATE_EPOCH", "lower_case", "EMPTY" };
+    const char *values[] = { "/opt/bin:${PATH}", "0", "kept", "" };
+    word i = 0;
+    for (list_item_t *item = config.envs.head; item && i < 4; item = item->next, i++) {
+        CHECK_STR(((project_env_t *)item->value)->name, names[i]);
+        CHECK_STR(((project_env_t *)item->value)->value, values[i]);
+    }
+
+    // Saving (e.g. after "idl add") keeps the section, in order.
+    project_file_dependency_add(&config, "m");
+    CHECK(project_file_save(&config));
+    project_file_config_clean(&config);
+    CHECK_INT(config.envs.count, 0);
+
+    project_file_config_init(&config);
+    CHECK(project_file_read(&config));
+    CHECK_INT(config.envs.count, 4);
+    i = 0;
+    for (list_item_t *item = config.envs.head; item && i < 4; item = item->next, i++) {
+        CHECK_STR(((project_env_t *)item->value)->name, names[i]);
+        CHECK_STR(((project_env_t *)item->value)->value, values[i]);
+    }
+    project_file_config_clean(&config);
+}
+
 static void check_invalid(const char *name, const char *content) {
     idl_test_enter_dir(name);
     idl_test_write(PROJECT_FILE_NAME, content);
@@ -256,6 +297,10 @@ static void test_invalid_files(void) {
     check_invalid("build_scalar", "project:\n  name: x\nbuild: 1\n");
     check_invalid("cflags_scalar", "project:\n  name: x\nbuild:\n  cflags: -O3\n");
 
+    check_invalid("envs_scalar", "project:\n  name: x\nenvs: A=1\n");
+    check_invalid("envs_list", "project:\n  name: x\nenvs: [A, B]\n");
+    check_invalid("envs_value_list", "project:\n  name: x\nenvs:\n  A: [1, 2]\n");
+    check_invalid("envs_twice", "project:\n  name: x\nenvs:\n  A: 1\n  A: 2\n");
     check_invalid("targets_empty", "project:\n  name: x\ntargets:\n");
     check_invalid("targets_list", "project:\n  name: x\ntargets: [a, b]\n");
     check_invalid("target_scalar", "project:\n  name: x\ntargets:\n  a: 1\n");
@@ -277,6 +322,7 @@ int main(void) {
     RUN_TEST(test_hand_written_file);
     RUN_TEST(test_targets);
     RUN_TEST(test_same_name);
+    RUN_TEST(test_envs);
     RUN_TEST(test_invalid_files);
     return idl_test_report();
 }

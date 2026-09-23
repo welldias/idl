@@ -24,6 +24,7 @@ typedef struct {
     build_options_t options;
     const char *profile;
     char *out_dir;                  // build/<profile>
+    char *env_stamp;                // variables set from envs: ("NAME=value\n"...), part of every stamp
 
     build_layout_t layout;
     build_toolchain_t toolchain;

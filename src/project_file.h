@@ -42,6 +42,12 @@ typedef struct {
     list_t link;                  // names of other targets
 } project_target_config_t;
 
+/* An item of the "envs:" section. Only uppercase names become environment variables. */
+typedef struct {
+    char *name;
+    char *value;
+} project_env_t;
+
 typedef struct {
     char *name;
     char *version;
@@ -51,6 +57,7 @@ typedef struct {
     list_t dependencies;  // system libraries (pkg-config or -l)
     project_build_config_t build;
     list_t targets;       // project_target_config_t *; empty: the directory convention is used
+    list_t envs;          // project_env_t *, in the order of the file
 } project_config_t;
 
 const char *project_target_type_name(project_target_type_t type);

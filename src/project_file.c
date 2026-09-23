@@ -79,6 +79,16 @@ static void project_target_destroy(void *item) {
     free(target);
 }
 
+static void project_env_destroy(void *item) {
+    project_env_t *env = (project_env_t *)item;
+    if (!env)
+        return;
+
+    free(env->name);
+    free(env->value);
+    free(env);
+}
+
 void project_file_config_init(project_config_t *config) {
     RETURN_IF_FAIL(config);
     memset(config, 0, sizeof(project_config_t));
@@ -87,6 +97,7 @@ void project_file_config_init(project_config_t *config) {
     for (word i = 0; i < SIZE_OF_ARRAY(project_file_build_lists); i++)
         list_init(project_file_build_list(config, i), free);
     list_init(&config->targets, project_target_destroy);
+    list_init(&config->envs, project_env_destroy);
 }
 
 void project_file_config_clean(project_config_t *config) {
@@ -96,6 +107,7 @@ void project_file_config_clean(project_config_t *config) {
     for (word i = 0; i < SIZE_OF_ARRAY(project_file_build_lists); i++)
         list_clear(project_file_build_list(config, i));
     list_clear(&config->targets);
+    list_clear(&config->envs);
     free(config->name);
     free(config->version);
     free(config->description);
@@ -212,6 +224,17 @@ bool project_file_save(project_config_t *config) {
             built = build && project_file_yaml_pair_add(&doc, root, "build", build);
         }
         built = built && project_file_yaml_pair_add(&doc, build, project_file_build_lists[i].key, project_file_yaml_sequence_add(&doc, list));
+    }
+
+    int envs = 0;
+    for (list_item_t *item = config->envs.head; built && item; item = item->next) {
+        project_env_t *env = (project_env_t *)item->value;
+
+        if (!envs) {
+            envs = yaml_document_add_mapping(&doc, NULL, YAML_BLOCK_MAPPING_STYLE);
+            built = envs && project_file_yaml_pair_add(&doc, root, "envs", envs);
+        }
+        built = built && project_file_yaml_pair_add(&doc, envs, env->name, project_file_yaml_scalar_add(&doc, env->value));
     }
 
     int targets = 0;
@@ -370,6 +393,49 @@ static bool project_file_targets_read(yaml_document_t *doc, project_config_t *co
     return true;
 }
 
+static bool project_file_envs_read(yaml_document_t *doc, project_config_t *config) {
+    yaml_node_t *envs = project_file_yaml_get(doc, yaml_document_get_root_node(doc), "envs");
+    if (!envs || (envs->type == YAML_SCALAR_NODE && envs->data.scalar.length == 0))
+        return true;
+
+    if (envs->type != YAML_MAPPING_NODE) {
+        log_error("%s:%zu: 'envs' must be a section of NAME: value pairs.", PROJECT_FILE_NAME, envs->start_mark.line + 1);
+        return false;
+    }
+
+    for (yaml_node_pair_t *pair = envs->data.mapping.pairs.start; pair < envs->data.mapping.pairs.top; pair++) {
+        yaml_node_t *key = yaml_document_get_node(doc, pair->key);
+        yaml_node_t *value = yaml_document_get_node(doc, pair->value);
+        word line = key ? key->start_mark.line + 1 : envs->start_mark.line + 1;
+
+        if (!key || key->type != YAML_SCALAR_NODE || !value || value->type != YAML_SCALAR_NODE) {
+            log_error("%s:%zu: each item of 'envs' must be NAME: value, with a single value.", PROJECT_FILE_NAME, line);
+            return false;
+        }
+
+        const char *name = (const char *)key->data.scalar.value;
+        for (list_item_t *item = config->envs.head; item; item = item->next) {
+            if (strcmp(((project_env_t *)item->value)->name, name) == 0) {
+                log_error("%s:%zu: '%s' is declared twice in 'envs'.", PROJECT_FILE_NAME, line, name);
+                return false;
+            }
+        }
+
+        project_env_t *env = (project_env_t *)calloc(1, sizeof(project_env_t));
+        if (!env) {
+            LOG_FATAL_NOT_ENOUGH_MEMORY();
+            return false;
+        }
+        env->name = strutils_strndup(name, (int)key->data.scalar.length);
+        env->value = strutils_format("%s", (const char *)value->data.scalar.value); // may be empty
+        if (!env->name || !env->value || !list_add(&config->envs, env)) {
+            project_env_destroy(env);
+            return false;
+        }
+    }
+    return true;
+}
+
 bool project_file_read(project_config_t *config) {
     RETURN_VAL_IF_FAIL(config, false);
 
@@ -421,7 +487,7 @@ bool project_file_read(project_config_t *config) {
             goto cleanup;
     }
 
-    if (!project_file_targets_read(&doc, config))
+    if (!project_file_envs_read(&doc, config) || !project_file_targets_read(&doc, config))
         goto cleanup;
 
     result = true;

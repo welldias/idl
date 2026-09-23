@@ -1,4 +1,5 @@
 #include "build_plan.h"
+#include "build_env.h"
 #include "compiler_command.h"
 #include "process_runner.h"
 
@@ -96,24 +97,36 @@ static char *build_cmd_join(compiler_command_t *cmd) {
     return joined;
 }
 
-/* Did the command change since the last build (flags, compiler...)? */
-static bool build_stamp_matches(const char *stamp, compiler_command_t *cmd) {
-    char *content = build_read_file(stamp);
+/* What produced an output: the command line plus the variables of envs:, which can also
+   change the result (CPATH, PATH with another compiler...). */
+static char *build_stamp_content(build_plan_t *plan, compiler_command_t *cmd) {
     char *joined = build_cmd_join(cmd);
-    bool result = content && joined && strcmp(content, joined) == 0;
-    free(content);
+    if (!joined || !plan->env_stamp || !plan->env_stamp[0])
+        return joined;
+
+    char *content = strutils_format("%s%s", joined, plan->env_stamp);
     free(joined);
+    return content;
+}
+
+/* Did the command or the environment change since the last build? */
+static bool build_stamp_matches(build_plan_t *plan, const char *stamp, compiler_command_t *cmd) {
+    char *content = build_read_file(stamp);
+    char *expected = build_stamp_content(plan, cmd);
+    bool result = content && expected && strcmp(content, expected) == 0;
+    free(content);
+    free(expected);
     return result;
 }
 
-static void build_stamp_write(const char *stamp, compiler_command_t *cmd) {
-    char *joined = build_cmd_join(cmd);
-    FILE *f = joined ? fopen(stamp, "wb") : nullptr;
+static void build_stamp_write(build_plan_t *plan, const char *stamp, compiler_command_t *cmd) {
+    char *content = build_stamp_content(plan, cmd);
+    FILE *f = content ? fopen(stamp, "wb") : nullptr;
     if (f) {
-        fputs(joined, f);
+        fputs(content, f);
         fclose(f);
     }
-    free(joined);
+    free(content);
 }
 
 /* Reads the first rule of the .d file ("obj: source header1 header2 ...") and
@@ -450,9 +463,9 @@ static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entr
     build_arg_list(plan, cmd, &config->build.libs, "-l");
 }
 
-static bool build_plan_link_dirty(const char *path, const char *stamp, compiler_command_t *cmd, list_t *inputs) {
+static bool build_plan_link_dirty(build_plan_t *plan, const char *path, const char *stamp, compiler_command_t *cmd, list_t *inputs) {
     int64 out_mtime = platform_file_mtime(path);
-    if (out_mtime < 0 || !build_stamp_matches(stamp, cmd))
+    if (out_mtime < 0 || !build_stamp_matches(plan, stamp, cmd))
         return true;
 
     for (list_item_t *item = inputs->head; item; item = item->next) {
@@ -505,7 +518,7 @@ static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries,
         for (word i = 0; i < count; i++) {
             build_artifact_entry_t *entry = &entries[i];
             if (targets->items[entry->target].level != level ||
-                !build_plan_link_dirty(entry->artifact.path, stamps[i], &cmds[i], &inputs[i]))
+                !build_plan_link_dirty(plan, entry->artifact.path, stamps[i], &cmds[i], &inputs[i]))
                 continue;
 
             build_make_parent_dirs(entry->artifact.path);
@@ -523,7 +536,7 @@ static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries,
 
         for (word j = 0; j < job_count; j++) {
             if (jobs[j].exit_status == 0)
-                build_stamp_write(stamps[job_entry[j]], &cmds[job_entry[j]]);
+                build_stamp_write(plan, stamps[job_entry[j]], &cmds[job_entry[j]]);
         }
         *linked += job_count;
     }
@@ -558,7 +571,7 @@ static bool build_plan_compile(build_plan_t *plan, word *compiled) {
 
         int64 obj_mtime = platform_file_mtime(unit->obj);
         unit->dirty = obj_mtime < 0 ||
-                      !build_stamp_matches(unit->stamp, &unit->cmd) ||
+                      !build_stamp_matches(plan, unit->stamp, &unit->cmd) ||
                       build_deps_changed(unit->dep, obj_mtime);
         if (!unit->dirty)
             continue;
@@ -576,7 +589,7 @@ static bool build_plan_compile(build_plan_t *plan, word *compiled) {
 
     for (word j = 0; j < job_count; j++) {
         if (jobs[j].exit_status == 0)
-            build_stamp_write(job_unit[j]->stamp, &job_unit[j]->cmd);
+            build_stamp_write(plan, job_unit[j]->stamp, &job_unit[j]->cmd);
     }
     *compiled = job_count;
 
@@ -664,6 +677,11 @@ bool build_plan_run(build_plan_t *plan, const build_options_t *options) {
     bool need_c = build_layout_uses_lang(layout, BUILD_LANG_C);
     bool need_cxx = build_layout_uses_lang(layout, BUILD_LANG_CXX);
 
+    // The variables of envs: go into idl's own environment, so every process it starts from
+    // here on (compiler, linker, pkg-config, and the program of run/test) inherits them.
+    if (!build_env_apply(&layout->config.envs, &plan->env_stamp))
+        return false;
+
     if (!build_toolchain_init(&plan->toolchain, need_c, need_cxx) ||
         !build_toolchain_resolve_deps(&plan->toolchain, &layout->config.dependencies) ||
         !build_plan_create_units(plan))
@@ -717,6 +735,7 @@ void build_plan_clear(build_plan_t *plan) {
     build_layout_clear(&plan->layout);
     build_toolchain_clear(&plan->toolchain);
     free(plan->out_dir);
+    free(plan->env_stamp);
     memset(plan, 0, sizeof(build_plan_t));
 }
 

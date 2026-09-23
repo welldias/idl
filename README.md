@@ -54,6 +54,22 @@ targets:
 
 See [examples/configured](examples/configured).
 
+## Environment variables
+
+The `envs:` section sets environment variables for every process idl starts in the project: the compiler, the linker, `pkg-config`, and the programs run by `idl run` and `idl test`.
+
+```yaml
+envs:
+  PKG_CONFIG_PATH: /opt/openssl-3/lib/pkgconfig:${PKG_CONFIG_PATH}
+  LD_LIBRARY_PATH: /opt/openssl-3/lib   # so idl run/test find the library at run time
+  TZ: UTC
+```
+
+- Only uppercase names (`A-Z`, `0-9`, `_`) become variables; other keys are ignored with a warning.
+- `${NAME}` is replaced by the current value of the variable, including one set earlier in the section; `$$` is a literal `$`.
+- The variables also affect how the compiler is found: `PATH`, `CC`, `CXX` and `AR` set here are used.
+- Changing the section rebuilds the project.
+
 ## Usage
 
 ```sh
