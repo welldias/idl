@@ -11,13 +11,13 @@ bool platform_file_exists(const char* full_path);
 bool platform_file_is_binary(const char* full_path);
 bool platform_make_dirs(const char* path);
 bool platform_dir_exists(const char* path);
-/* Retorna o instante de modificação em nanossegundos, ou -1 se o arquivo não existir. */
+/* Returns the modification time in nanoseconds, or -1 if the file does not exist. */
 int64 platform_file_mtime(const char* path);
-/* Remove o arquivo ou o diretório com todo o seu conteúdo (como rm -rf). */
+/* Removes the file, or the directory with all its contents (like rm -rf). */
 bool platform_remove_tree(const char* path);
-/* Executa um programa com stdin/stdout/stderr herdados e retorna o código de saída (-1 se não iniciar). */
+/* Runs a program with inherited stdin/stdout/stderr and returns its exit code (-1 if it cannot start). */
 int platform_exec(char* const* argv);
-/* extension == NULL chama add_file_cb para todos os arquivos. */
+/* extension == NULL calls add_file_cb for every file. */
 bool platform_scan_directory(const char *dir_path, const char *extension, platform_scan_directory_cb add_file_cb, void* arg);
 bool platform_processes_wait_async(void * proc, int ms);
 uint32 platform_num_cores(void);

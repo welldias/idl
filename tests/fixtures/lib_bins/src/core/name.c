@@ -1,5 +1,5 @@
 #include <calc/calc.h>
 
-const char *calc_nome(void) {
+const char *calc_name(void) {
     return "calc";
 }

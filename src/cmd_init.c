@@ -14,7 +14,7 @@ static bool init_file_exists(const char *path) {
     return platform_file_mtime(path) >= 0;
 }
 
-/* Cria o arquivo somente se ele ainda não existir. */
+/* Creates the file only if it does not exist yet. */
 static bool init_write_new_file(const char *path, const char *content) {
     if (init_file_exists(path))
         return true;
@@ -34,7 +34,7 @@ static bool init_write_main(const char *project_name) {
             return true;
     }
 
-    // O nome do projeto vai dentro de uma string C: escapa aspas e barras.
+    // The project name goes inside a C string: escape quotes and backslashes.
     char name[DIR_NAME_LEN * 2];
     word len = 0;
     for (const char *p = project_name; *p && len < sizeof(name) - 2; p++) {

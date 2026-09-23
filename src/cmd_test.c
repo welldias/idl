@@ -2,7 +2,7 @@
 #include "cmd_args.h"
 #include "build_plan.h"
 
-/* idl test [--release] [--project <dir>]: compila e executa cada arquivo de tests/. */
+/* idl test [--release] [--project <dir>]: builds and runs each file in tests/. */
 int handle_param_test(int argc, char *argv[]) {
     cmd_args_t args = {0};
     cmd_args_parse(&args, argc, argv, 2);
@@ -25,27 +25,27 @@ int handle_param_test(int argc, char *argv[]) {
         if (test->kind != BUILD_ARTIFACT_TEST)
             continue;
 
-        printf("\nTeste %s\n", test->name);
+        printf("\nTest %s\n", test->name);
         fflush(stdout);
 
         char *test_argv[] = { test->path, nullptr };
         int code = platform_exec(test_argv);
         if (code == 0) {
-            printf("Teste %s: ok\n", test->name);
+            printf("Test %s: ok\n", test->name);
             passed++;
         } else {
-            printf("Teste %s: FALHOU (código %d)\n", test->name, code);
+            printf("Test %s: FAILED (exit code %d)\n", test->name, code);
             failed++;
         }
     }
 
     if (passed + failed == 0) {
-        printf("Nenhum teste encontrado em %s/.\n", BUILD_TESTS_DIR);
+        printf("No tests found in %s/.\n", BUILD_TESTS_DIR);
         exit_code = 0;
         goto cleanup;
     }
 
-    printf("\nResultado: %zu passaram, %zu falharam.\n", passed, failed);
+    printf("\nResult: %zu passed, %zu failed.\n", passed, failed);
     exit_code = failed ? 1 : 0;
 
 cleanup:

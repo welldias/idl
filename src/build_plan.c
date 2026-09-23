@@ -8,14 +8,14 @@
 
 struct build_unit_t {
     build_source_t *source;
-    char *obj;      // build/<perfil>/obj/<fonte>.o
-    char *dep;      // build/<perfil>/obj/<fonte>.d   (gerado pelo compilador com -MMD)
-    char *stamp;    // build/<perfil>/obj/<fonte>.cmd (comando usado na última compilação)
+    char *obj;      // build/<profile>/obj/<source>.o
+    char *dep;      // build/<profile>/obj/<source>.d   (written by the compiler with -MMD)
+    char *stamp;    // build/<profile>/obj/<source>.cmd (command used in the last compilation)
     compiler_command_t cmd;
     bool dirty;
 };
 
-/* Guarda a string no plano para ser liberada junto com ele. */
+/* Keeps the string in the plan so it is freed along with it. */
 static const char *build_own(build_plan_t *plan, char *str) {
     list_add(&plan->strings, str);
     return str;
@@ -61,7 +61,7 @@ static bool build_make_parent_dirs(const char *path) {
 }
 
 /*****************************************************************************/
-/* Build incremental                                                         */
+/* Incremental build                                                         */
 /*****************************************************************************/
 
 static char *build_cmd_join(compiler_command_t *cmd) {
@@ -80,7 +80,7 @@ static char *build_cmd_join(compiler_command_t *cmd) {
     return joined;
 }
 
-/* O comando mudou desde o último build (flags, compilador...)? */
+/* Did the command change since the last build (flags, compiler...)? */
 static bool build_stamp_matches(const char *stamp, compiler_command_t *cmd) {
     char *content = build_read_file(stamp);
     char *joined = build_cmd_join(cmd);
@@ -100,8 +100,8 @@ static void build_stamp_write(const char *stamp, compiler_command_t *cmd) {
     free(joined);
 }
 
-/* Lê a primeira regra do arquivo .d ("obj: fonte header1 header2 ...") e
-   verifica se alguma dependência sumiu ou é mais nova que o objeto. */
+/* Reads the first rule of the .d file ("obj: source header1 header2 ...") and
+   checks whether any dependency is gone or newer than the object. */
 static bool build_deps_changed(const char *dep_path, int64 obj_mtime) {
     char *content = build_read_file(dep_path);
     if (!content)
@@ -126,7 +126,7 @@ static bool build_deps_changed(const char *dep_path, int64 obj_mtime) {
             continue;
         }
         if (*p == '\n')
-            break; // fim da primeira regra; as seguintes são alvos falsos do -MP
+            break; // end of the first rule; the next ones are -MP phony targets
 
         const char *start = p;
         word len = 0;
@@ -134,7 +134,7 @@ static bool build_deps_changed(const char *dep_path, int64 obj_mtime) {
             if (*p == '\\' && (p[1] == '\n' || p[1] == '\r'))
                 break;
             if ((*p == '\\' && p[1] == ' ') || (*p == '$' && p[1] == '$'))
-                p++; // espaço escapado ou "$$"
+                p++; // escaped space or "$$"
             if (len < sizeof(token) - 1)
                 token[len++] = *p;
             p++;
@@ -158,7 +158,7 @@ static bool build_deps_changed(const char *dep_path, int64 obj_mtime) {
 }
 
 /*****************************************************************************/
-/* Montagem dos comandos                                                     */
+/* Command lines                                                             */
 /*****************************************************************************/
 
 /* "C23" -> "-std=c23", "C++20" -> "-std=c++20", "gnu17" -> "-std=gnu17". */
@@ -172,7 +172,7 @@ static char *build_std_flag(const char *value, const char *key) {
 
     const char *std = flag + 5;
     if (std[0] != 'c' && strncmp(std, "gnu", 3) != 0) {
-        log_warn("%s '%s' não reconhecido; nenhum -std será usado.", key, value);
+        log_warn("%s '%s' not recognized; no -std will be used.", key, value);
         free(flag);
         return nullptr;
     }
@@ -248,7 +248,7 @@ static bool build_plan_create_units(build_plan_t *plan) {
     return true;
 }
 
-/* Índices das unidades: [main][lib...][bins...][tests...] */
+/* Unit indexes: [main][lib...][bins...][tests...] */
 static word build_plan_lib_first(build_plan_t *plan) {
     return plan->layout.main.count;
 }
@@ -261,8 +261,8 @@ static word build_plan_tests_first(build_plan_t *plan) {
     return build_plan_bins_first(plan) + plan->layout.bins.count;
 }
 
-/* Cada artefato usa todos os fontes da biblioteca interna (src/ sem main e sem bin/)
-   mais, opcionalmente, o próprio fonte (main, bin ou teste). */
+/* Each artifact uses every source of the internal library (src/ without main and bin/)
+   plus, optionally, its own source (main, bin or test). */
 typedef struct {
     build_artifact_t artifact;
     bool has_unit;
@@ -341,7 +341,7 @@ static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entr
         return;
     }
 
-    // Linka com o compilador C++ se algum dos fontes for C++.
+    // Link with the C++ compiler if any of the sources is C++.
     bool cxx = entry->has_unit && plan->units[entry->unit].source->lang == BUILD_LANG_CXX;
     for (word i = 0; i < lib_count; i++)
         cxx = cxx || plan->units[lib_first + i].source->lang == BUILD_LANG_CXX;
@@ -395,9 +395,9 @@ static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries,
         build_make_parent_dirs(entry->artifact.path);
         build_make_parent_dirs(stamps[i]);
         if (entry->artifact.kind == BUILD_ARTIFACT_LIB)
-            platform_remove_tree(entry->artifact.path); // ar rcs mantém membros antigos
+            platform_remove_tree(entry->artifact.path); // ar rcs would keep stale members
 
-        const char *verb = entry->artifact.kind == BUILD_ARTIFACT_LIB ? "Arquivando" : "Linkando";
+        const char *verb = entry->artifact.kind == BUILD_ARTIFACT_LIB ? "Archiving" : "Linking";
         jobs[job_count].label = build_own(plan, strutils_format("  %s %s", verb, entry->artifact.path));
         jobs[job_count].cmd = &cmds[i];
         job_entry[job_count++] = i;
@@ -444,7 +444,7 @@ static bool build_plan_compile(build_plan_t *plan, word *compiled) {
             continue;
 
         build_make_parent_dirs(unit->obj);
-        jobs[job_count].label = build_own(plan, strutils_format("  Compilando %s", unit->source->path));
+        jobs[job_count].label = build_own(plan, strutils_format("  Compiling %s", unit->source->path));
         jobs[job_count].cmd = &unit->cmd;
         job_unit[job_count++] = unit;
     }
@@ -486,7 +486,7 @@ static void build_json_string(FILE *f, const char *str) {
     fputc('"', f);
 }
 
-/* Usado por clangd e pelas extensões C/C++ dos editores. */
+/* Used by clangd and the C/C++ editor extensions. */
 static void build_plan_write_compile_commands(build_plan_t *plan) {
     char cwd[1024];
     if (getcwd(cwd, sizeof(cwd)) == nullptr || !platform_make_dirs(BUILD_OUT_DIR))
@@ -494,7 +494,7 @@ static void build_plan_write_compile_commands(build_plan_t *plan) {
 
     FILE *f = fopen(BUILD_COMPILE_COMMANDS, "wb");
     if (!f) {
-        log_warn("Não foi possível gravar %s.", BUILD_COMPILE_COMMANDS);
+        log_warn("Could not write %s.", BUILD_COMPILE_COMMANDS);
         return;
     }
 
@@ -548,27 +548,27 @@ bool build_plan_run(build_plan_t *plan, const build_options_t *options) {
 
     build_plan_write_compile_commands(plan);
 
-    printf("Construindo %s (%s)\n", layout->name, plan->profile);
+    printf("Building %s (%s)\n", layout->name, plan->profile);
     fflush(stdout);
 
     word compiled = 0;
     word linked = 0;
     if (!build_plan_compile(plan, &compiled)) {
-        log_error("Falha na compilação.");
+        log_error("Compilation failed.");
         return false;
     }
 
     if (!build_plan_link_artifacts(plan, &linked)) {
-        log_error("Falha na linkagem.");
+        log_error("Linking failed.");
         return false;
     }
 
     if (compiled == 0 && linked == 0)
-        printf("Nada a fazer: tudo está atualizado.\n");
+        printf("Nothing to do: everything is up to date.\n");
 
     for (word i = 0; i < plan->artifact_count; i++) {
         if (plan->artifacts[i].kind != BUILD_ARTIFACT_TEST)
-            printf("Pronto: %s\n", plan->artifacts[i].path);
+            printf("Finished: %s\n", plan->artifacts[i].path);
     }
     return true;
 }
@@ -614,7 +614,7 @@ bool build_enter_project_dir(const char *dir) {
 
     int r = uv_chdir(dir);
     if (r) {
-        log_error("Não foi possível entrar em %s: %s", dir, uv_strerror(r));
+        log_error("Could not enter %s: %s", dir, uv_strerror(r));
         return false;
     }
     return true;

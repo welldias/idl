@@ -1,9 +1,9 @@
-# Testes do idl. Rode com: cmake --build build && ctest --test-dir build --output-on-failure
+# idl tests. Run with: cmake --build build && ctest --test-dir build --output-on-failure
 #
-#   unit.*         testes em C de cada módulo (tests/unit/test_<módulo>.c)
-#   integration.*  scripts CMake que executam o binário idl sobre projetos de exemplo (tests/fixtures)
+#   unit.*         C tests for each module (tests/unit/test_<module>.c)
+#   integration.*  CMake scripts that run the idl binary on sample projects (tests/fixtures)
 
-# Programa auxiliar usado no lugar de comandos do shell (portável entre Unix e Windows).
+# Helper program used instead of shell commands (portable between Unix and Windows).
 add_executable(fake_tool helpers/fake_tool.c)
 
 set(IDL_UNIT_TESTS
@@ -53,6 +53,6 @@ foreach(name ${IDL_INTEGRATION_TESTS})
 			-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/work/integration_${name}
 			-P ${CMAKE_CURRENT_SOURCE_DIR}/integration/${name}.cmake
 	)
-	# Código 77: teste pulado (ex.: não há compilador C++ ou clang na máquina).
+	# Exit code 77: test skipped (e.g. no C++ compiler or clang on the machine).
 	set_tests_properties(integration.${name} PROPERTIES LABELS integration SKIP_RETURN_CODE 77)
 endforeach()

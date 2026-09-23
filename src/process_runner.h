@@ -5,15 +5,15 @@
 #include "compiler_command.h"
 
 typedef struct {
-    const char *label;          // Texto exibido ao iniciar o job (NULL = nada)
-    compiler_command_t *cmd;    // argv terminado em NULL; args[0] é o executável
-    bool capture;               // true: guarda o stdout em output e não exibe nada
-    char *output;               // stdout capturado (liberar com free)
-    int64 exit_status;          // Preenchido após a execução
+    const char *label;          // Text printed when the job starts (NULL = nothing)
+    compiler_command_t *cmd;    // NULL-terminated argv; args[0] is the executable
+    bool capture;               // true: store stdout in output and print nothing
+    char *output;               // captured stdout (release with free)
+    int64 exit_status;          // Filled in after the run
 } process_job_t;
 
-/* Executa os jobs em paralelo, até max_parallel ao mesmo tempo (0 = número de núcleos).
-   Retorna true se todos terminaram com código 0. */
+/* Runs the jobs in parallel, up to max_parallel at a time (0 = number of cores).
+   Returns true if all of them exited with code 0. */
 bool process_runner_run(process_job_t *jobs, word count, uint32 max_parallel);
 
 #endif // IDL_PROCESS_RUNNER_H

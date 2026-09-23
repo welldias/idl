@@ -1,5 +1,5 @@
 #include <calc/calc.h>
 
-int calc_somar(int a, int b) {
+int calc_add(int a, int b) {
     return a + b;
 }

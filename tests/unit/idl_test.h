@@ -1,7 +1,7 @@
-/* Mini framework de testes unitários do idl.
+/* Tiny unit test framework for idl.
  *
- * Cada arquivo test_<módulo>.c declara funções de teste e as executa com RUN_TEST
- * dentro do main; o código de saída é 0 somente se todas as verificações passarem. */
+ * Each test_<module>.c file declares test functions and runs them with RUN_TEST
+ * inside main; the exit code is 0 only if every check passes. */
 #ifndef IDL_TEST_H
 #define IDL_TEST_H
 
@@ -16,7 +16,7 @@ static int idl_test_failures = 0;
     do {                                                                             \
         idl_test_checks++;                                                           \
         if (!(expr)) {                                                               \
-            fprintf(stderr, "%s:%d: falhou: %s\n", __FILE__, __LINE__, #expr);       \
+            fprintf(stderr, "%s:%d: failed: %s\n", __FILE__, __LINE__, #expr);       \
             idl_test_failures++;                                                     \
         }                                                                            \
     } while (0)
@@ -27,7 +27,7 @@ static int idl_test_failures = 0;
         const char *expected_ = (expected);                                          \
         idl_test_checks++;                                                           \
         if (!actual_ || strcmp(actual_, expected_) != 0) {                           \
-            fprintf(stderr, "%s:%d: %s: esperado \"%s\", obtido \"%s\"\n", __FILE__, \
+            fprintf(stderr, "%s:%d: %s: expected \"%s\", got \"%s\"\n", __FILE__, \
                     __LINE__, #actual, expected_, actual_ ? actual_ : "(null)");     \
             idl_test_failures++;                                                     \
         }                                                                            \
@@ -39,7 +39,7 @@ static int idl_test_failures = 0;
         long long expected_ = (long long)(expected);                                 \
         idl_test_checks++;                                                           \
         if (actual_ != expected_) {                                                  \
-            fprintf(stderr, "%s:%d: %s: esperado %lld, obtido %lld\n", __FILE__,     \
+            fprintf(stderr, "%s:%d: %s: expected %lld, got %lld\n", __FILE__,     \
                     __LINE__, #actual, expected_, actual_);                          \
             idl_test_failures++;                                                     \
         }                                                                            \
@@ -54,23 +54,23 @@ static int idl_test_failures = 0;
     } while (0)
 
 static inline int idl_test_report(void) {
-    printf("%d verificações, %d falhas\n", idl_test_checks, idl_test_failures);
+    printf("%d checks, %d failures\n", idl_test_checks, idl_test_failures);
     return idl_test_failures ? 1 : 0;
 }
 
-/* Recria IDL_TEST_WORK_DIR/<name> vazio e entra nele. */
+/* Recreates IDL_TEST_WORK_DIR/<name> empty and enters it. */
 static inline void idl_test_enter_dir(const char *name) {
     char *dir = strutils_format("%s/%s", IDL_TEST_WORK_DIR, name);
     platform_remove_tree(dir);
     platform_make_dirs(dir);
     if (uv_chdir(dir) != 0) {
-        fprintf(stderr, "não foi possível entrar em %s\n", dir);
+        fprintf(stderr, "could not enter %s\n", dir);
         exit(2);
     }
     free(dir);
 }
 
-/* Grava um arquivo criando os diretórios pais. */
+/* Writes a file, creating its parent directories. */
 static inline void idl_test_write(const char *path, const char *content) {
     const char *slash = strrchr(path, '/');
     if (slash) {
@@ -81,14 +81,14 @@ static inline void idl_test_write(const char *path, const char *content) {
 
     FILE *f = fopen(path, "wb");
     if (!f) {
-        fprintf(stderr, "não foi possível gravar %s\n", path);
+        fprintf(stderr, "could not write %s\n", path);
         exit(2);
     }
     fputs(content, f);
     fclose(f);
 }
 
-/* Lê um arquivo inteiro (liberar com free). Retorna NULL se não existir. */
+/* Reads a whole file (release with free). Returns NULL if it does not exist. */
 static inline char *idl_test_read(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f)

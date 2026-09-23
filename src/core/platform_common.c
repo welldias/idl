@@ -1,6 +1,6 @@
 #include "platform.h"
 
-/* Funções de plataforma implementadas com a libuv, iguais no Unix e no Windows. */
+/* Platform functions implemented with libuv, identical on Unix and Windows. */
 
 bool platform_dir_exists(const char *path) {
     RETURN_VAL_IF_FAIL(path, false);

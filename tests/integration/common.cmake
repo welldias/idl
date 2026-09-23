@@ -1,13 +1,13 @@
-# Funções comuns dos testes de integração.
-# Cada script recebe: IDL (binário), FIXTURES_DIR (projetos de exemplo) e WORK_DIR (área de trabalho).
+# Common functions for the integration tests.
+# Each script receives: IDL (binary), FIXTURES_DIR (sample projects) and WORK_DIR (scratch area).
 
 foreach(var IDL FIXTURES_DIR WORK_DIR)
 	if(NOT DEFINED ${var})
-		message(FATAL_ERROR "Variável ${var} não definida (rode pelo ctest).")
+		message(FATAL_ERROR "Variable ${var} is not defined (run through ctest).")
 	endif()
 endforeach()
 
-# Garante que CC/CXX/AR do ambiente não interfiram nos testes.
+# Make sure CC/CXX/AR from the environment do not affect the tests.
 set(ENV{CC} "")
 set(ENV{CXX} "")
 set(ENV{AR} "")
@@ -21,19 +21,19 @@ endif()
 file(REMOVE_RECURSE "${WORK_DIR}")
 file(MAKE_DIRECTORY "${WORK_DIR}")
 
-# Pula o teste (o ctest trata o código 77 como "skipped").
+# Skips the test (ctest treats exit code 77 as "skipped").
 function(skip_test reason)
 	message(STATUS "SKIP: ${reason}")
 	cmake_language(EXIT 77)
 endfunction()
 
-# Copia tests/fixtures/<name> para WORK_DIR/<name> e define PROJECT_DIR.
+# Copies tests/fixtures/<name> to WORK_DIR/<name> and sets PROJECT_DIR.
 function(use_fixture name)
 	file(COPY "${FIXTURES_DIR}/${name}" DESTINATION "${WORK_DIR}")
 	set(PROJECT_DIR "${WORK_DIR}/${name}" PARENT_SCOPE)
 endfunction()
 
-# idl(<dir> EXPECT <código> ARGS <args...>): executa o idl e guarda a saída (stdout+stderr) em IDL_OUTPUT.
+# idl(<dir> EXPECT <code> ARGS <args...>): runs idl and stores its output (stdout+stderr) in IDL_OUTPUT.
 function(idl dir)
 	cmake_parse_arguments(ARG "" "EXPECT" "ARGS" ${ARGN})
 	if(NOT DEFINED ARG_EXPECT)
@@ -47,15 +47,15 @@ function(idl dir)
 		ERROR_VARIABLE output
 		RESULT_VARIABLE result
 	)
-	message(STATUS "$ idl ${ARG_ARGS}  (em ${dir}) -> ${result}\n${output}")
+	message(STATUS "$ idl ${ARG_ARGS}  (in ${dir}) -> ${result}\n${output}")
 
 	if(NOT "${result}" STREQUAL "${ARG_EXPECT}")
-		message(FATAL_ERROR "idl ${ARG_ARGS}: esperado código ${ARG_EXPECT}, obtido ${result}")
+		message(FATAL_ERROR "idl ${ARG_ARGS}: expected exit code ${ARG_EXPECT}, got ${result}")
 	endif()
 	set(IDL_OUTPUT "${output}" PARENT_SCOPE)
 endfunction()
 
-# run_program(<programa> EXPECT <código> ARGS <args...>): executa um binário gerado; saída em PROGRAM_OUTPUT.
+# run_program(<program> EXPECT <code> ARGS <args...>): runs a built binary; output in PROGRAM_OUTPUT.
 function(run_program program)
 	cmake_parse_arguments(ARG "" "EXPECT" "ARGS" ${ARGN})
 	if(NOT DEFINED ARG_EXPECT)
@@ -63,7 +63,7 @@ function(run_program program)
 	endif()
 
 	if(NOT EXISTS "${program}")
-		message(FATAL_ERROR "Programa não encontrado: ${program}")
+		message(FATAL_ERROR "Program not found: ${program}")
 	endif()
 
 	execute_process(
@@ -73,7 +73,7 @@ function(run_program program)
 		RESULT_VARIABLE result
 	)
 	if(NOT "${result}" STREQUAL "${ARG_EXPECT}")
-		message(FATAL_ERROR "${program}: esperado código ${ARG_EXPECT}, obtido ${result}\n${output}")
+		message(FATAL_ERROR "${program}: expected exit code ${ARG_EXPECT}, got ${result}\n${output}")
 	endif()
 	set(PROGRAM_OUTPUT "${output}" PARENT_SCOPE)
 endfunction()
@@ -81,30 +81,30 @@ endfunction()
 function(expect_contains text needle)
 	string(FIND "${text}" "${needle}" pos)
 	if(pos EQUAL -1)
-		message(FATAL_ERROR "Esperado encontrar \"${needle}\" em:\n${text}")
+		message(FATAL_ERROR "Expected to find \"${needle}\" in:\n${text}")
 	endif()
 endfunction()
 
 function(expect_not_contains text needle)
 	string(FIND "${text}" "${needle}" pos)
 	if(NOT pos EQUAL -1)
-		message(FATAL_ERROR "Não esperado encontrar \"${needle}\" em:\n${text}")
+		message(FATAL_ERROR "Did not expect to find \"${needle}\" in:\n${text}")
 	endif()
 endfunction()
 
 function(expect_exists path)
 	if(NOT EXISTS "${path}")
-		message(FATAL_ERROR "Esperado existir: ${path}")
+		message(FATAL_ERROR "Expected to exist: ${path}")
 	endif()
 endfunction()
 
 function(expect_not_exists path)
 	if(EXISTS "${path}")
-		message(FATAL_ERROR "Não esperado existir: ${path}")
+		message(FATAL_ERROR "Did not expect to exist: ${path}")
 	endif()
 endfunction()
 
-# Conta quantas vezes <needle> aparece em <text>.
+# Counts how many times <needle> appears in <text>.
 function(count_occurrences text needle out_var)
 	string(REPLACE "${needle}" "\n" replaced "${text}")
 	string(LENGTH "${text}" len_before)
@@ -114,7 +114,7 @@ function(count_occurrences text needle out_var)
 	set(${out_var} ${count} PARENT_SCOPE)
 endfunction()
 
-# Avança o mtime do arquivo, para o build incremental enxergar a mudança.
+# Bumps the file mtime so the incremental build sees the change.
 function(touch_later path)
 	file(TOUCH "${path}")
 endfunction()

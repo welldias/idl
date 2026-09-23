@@ -18,7 +18,7 @@ bool platform_make_dirs(const char *path) {
     int len = snprintf(buffer, sizeof(buffer), "%s", path);
     RETURN_VAL_IF_FAIL(len > 0 && len < (int)sizeof(buffer), false);
 
-    // Cria cada diretório intermediário; erros aqui são checados no final.
+    // Create each intermediate directory; errors here are checked at the end.
     for (char *p = buffer + 1; *p; p++) {
         if (*p == '/') {
             *p = '\0';

@@ -1,5 +1,5 @@
 #include <mix/api.h>
 
-int c_dobro(int x) {
+int c_double(int x) {
     return 2 * x;
 }

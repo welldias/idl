@@ -17,10 +17,10 @@ list(REMOVE_ITEM SOURCES ${EXCLUDE_FILES})
 
 include(FetchContent)
 
-# Faz option() das dependências respeitar variáveis já definidas aqui (ex.: BUILD_TESTING).
+# Make the dependencies' option() calls honor variables already set here (e.g. BUILD_TESTING).
 set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
 
-# libuv: I/O assíncrono e utilitários de plataforma, baixada durante a configuração do build
+# libuv: async I/O and platform utilities, downloaded when the build is configured
 FetchContent_Declare(
 	libuv
 	URL https://github.com/libuv/libuv/archive/refs/tags/v1.52.1.tar.gz
@@ -31,7 +31,7 @@ FetchContent_Declare(
 set(LIBUV_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libuv)
 
-# libyaml: leitura e escrita de YAML, baixada durante a configuração do build
+# libyaml: YAML reading and writing, downloaded when the build is configured
 FetchContent_Declare(
 	libyaml
 	URL https://github.com/yaml/libyaml/archive/refs/tags/0.2.5.tar.gz
@@ -39,12 +39,12 @@ FetchContent_Declare(
 	DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 	EXCLUDE_FROM_ALL
 )
-# O CMakeLists.txt da libyaml exige CMake 3.0, versão que o CMake 4 não aceita mais.
+# libyaml's CMakeLists.txt requires CMake 3.0, which CMake 4 no longer accepts.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 FetchContent_MakeAvailable(libyaml)
 unset(CMAKE_POLICY_VERSION_MINIMUM)
 
-# Todo o código fica na biblioteca idl_core, que também é usada pelos testes.
+# All the code lives in the idl_core library, which the tests also use.
 list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/main.c")
 add_library(idl_core STATIC ${SOURCES})
 target_include_directories(idl_core PUBLIC src)
@@ -54,7 +54,7 @@ target_compile_definitions(idl_core PUBLIC DEBUG=0)
 add_executable(idl src/main.c)
 target_link_libraries(idl idl_core)
 
-option(IDL_BUILD_TESTS "Compila os testes do idl (ctest)" ON)
+option(IDL_BUILD_TESTS "Build the idl tests (ctest)" ON)
 if(IDL_BUILD_TESTS)
 	enable_testing()
 	add_subdirectory(tests)

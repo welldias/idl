@@ -1,6 +1,6 @@
-/* Programa auxiliar dos testes: imprime e sai conforme os argumentos.
+/* Test helper program: prints and exits according to its arguments.
  *
- *   fake_tool [--stdout <texto>] [--stderr <texto>] [--exit <código>]
+ *   fake_tool [--stdout <text>] [--stderr <text>] [--exit <code>]
  */
 #include <stdio.h>
 #include <stdlib.h>

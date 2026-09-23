@@ -36,8 +36,8 @@ static void process_runner_print_stream(stream_t *stream, bool is_error) {
     fputs((const char *)stream->data, is_error ? stderr : stdout);
 }
 
-/* Chamado quando os 3 handles (processo e os 2 pipes) foram fechados:
-   só aqui a saída está completa e a memória pode ser liberada. */
+/* Called when the 3 handles (process and both pipes) are closed:
+   only then is the output complete and the memory safe to free. */
 static void process_runner_on_handle_close(uv_handle_t *handle) {
     process_context_t *ctx = (process_context_t *)handle->data;
     if (--ctx->open_handles > 0)
@@ -47,18 +47,18 @@ static void process_runner_on_handle_close(uv_handle_t *handle) {
     if (job->capture) {
         stream_write(&ctx->out_stream, (const byte *)"", 1);
         job->output = (char *)ctx->out_stream.data;
-        ctx->out_stream = (stream_t){ 0 }; // a posse do buffer passa para o job
+        ctx->out_stream = (stream_t){ 0 }; // the job takes ownership of the buffer
     } else {
         process_runner_print_stream(&ctx->out_stream, false);
         process_runner_print_stream(&ctx->err_stream, true);
 
         if (ctx->spawn_error)
-            log_error("Falha ao executar '%s': %s", job->cmd->args[0], uv_strerror(ctx->spawn_error));
+            log_error("Failed to run '%s': %s", job->cmd->args[0], uv_strerror(ctx->spawn_error));
         else if (job->exit_status != 0) {
             const char *what = job->label ? job->label : job->cmd->args[0];
             while (*what == ' ')
                 what++;
-            log_error("%s: falhou (código %lld)", what, (long long)job->exit_status);
+            log_error("%s: failed (exit code %lld)", what, (long long)job->exit_status);
         }
     }
 
@@ -122,7 +122,7 @@ static void process_runner_spawn_next(process_runner_t *runner) {
         ctx->process.data = ctx;
         ctx->out_pipe.data = ctx;
         ctx->err_pipe.data = ctx;
-        ctx->open_handles = 3; // processo, stdout e stderr
+        ctx->open_handles = 3; // process, stdout and stderr
 
         stream_init(&ctx->out_stream, 256);
         stream_init(&ctx->err_stream, 256);
@@ -146,7 +146,7 @@ static void process_runner_spawn_next(process_runner_t *runner) {
 
         int r = uv_spawn(&runner->loop, &ctx->process, &options);
         if (r) {
-            // Mesmo com falha, a libuv exige fechar o handle do processo.
+            // Even on failure, libuv requires closing the process handle.
             ctx->spawn_error = r;
             job->exit_status = -1;
             runner->failed = true;
@@ -178,7 +178,7 @@ bool process_runner_run(process_job_t *jobs, word count, uint32 max_parallel) {
 
     int r = uv_loop_init(&runner.loop);
     if (r) {
-        log_error("Falha ao iniciar o loop de eventos: %s", uv_strerror(r));
+        log_error("Failed to start the event loop: %s", uv_strerror(r));
         return false;
     }
 

@@ -5,18 +5,18 @@
 #include "project_file.h"
 
 typedef struct {
-    char *cc;       // compilador C (NULL se não for necessário)
-    char *cxx;      // compilador C++ (NULL se não for necessário)
-    char *ar;       // arquivador de bibliotecas estáticas
+    char *cc;       // C compiler (NULL when not needed)
+    char *cxx;      // C++ compiler (NULL when not needed)
+    char *ar;       // static library archiver
 
-    list_t cflags;  // flags de compilação vindas das dependências (pkg-config --cflags)
-    list_t ldflags; // flags de link vindas das dependências (pkg-config --libs ou -l<nome>)
+    list_t cflags;  // compile flags from the dependencies (pkg-config --cflags)
+    list_t ldflags; // link flags from the dependencies (pkg-config --libs or -l<name>)
 } build_toolchain_t;
 
-/* Escolhe os compiladores: CC/CXX/AR do ambiente ou, senão, gcc/g++ e depois clang/clang++. */
+/* Picks the compilers: CC/CXX/AR from the environment, otherwise gcc/g++ and then clang/clang++. */
 bool build_toolchain_init(build_toolchain_t *toolchain, bool need_c, bool need_cxx);
 
-/* Converte project.dependencies em flags (pkg-config, com -l<nome> como alternativa). */
+/* Turns project.dependencies into flags (pkg-config, falling back to -l<name>). */
 bool build_toolchain_resolve_deps(build_toolchain_t *toolchain, list_t *dependencies);
 
 void build_toolchain_clear(build_toolchain_t *toolchain);

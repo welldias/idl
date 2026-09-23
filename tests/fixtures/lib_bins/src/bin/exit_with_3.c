@@ -1,6 +1,6 @@
 #include <stdio.h>
 
 int main(void) {
-    puts("saindo com 3");
+    puts("exiting with 3");
     return 3;
 }

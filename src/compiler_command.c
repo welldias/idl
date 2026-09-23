@@ -20,7 +20,7 @@ void compiler_commands_append(compiler_command_t *cmd, int count, char **args) {
     if (new_capacity > cmd->capacity) {
         char **new_args = (char **)realloc(cmd->args, sizeof(char *) * new_capacity);
         if (new_args == NULL) {
-            return; // Falha na alocação de memória
+            return; // Out of memory
         }
         cmd->args = new_args;
         cmd->capacity = new_capacity;

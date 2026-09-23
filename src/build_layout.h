@@ -15,8 +15,8 @@ typedef enum {
 } build_lang_t;
 
 typedef struct {
-    char *path;         // relativo à raiz do projeto, sempre com '/' (ex.: "src/util.c")
-    char *stem;         // nome do arquivo sem diretório e sem extensão (ex.: "util")
+    char *path;         // relative to the project root, always with '/' (e.g. "src/util.c")
+    char *stem;         // file name without directory and extension (e.g. "util")
     build_lang_t lang;
 } build_source_t;
 
@@ -26,29 +26,29 @@ typedef struct {
     word capacity;
 } build_sources_t;
 
-/* O que a convenção de diretórios (as "etiquetas") revela sobre o projeto. */
+/* What the directory convention (the "labels") tells about the project. */
 typedef struct {
-    char *name;                 // project.name ou o nome do diretório
-    bool has_config;            // existe project.yml
-    project_config_t config;    // vazio se não houver project.yml
-    bool has_include_dir;       // existe include/
+    char *name;                 // project.name or the directory name
+    bool has_config;            // project.yml exists
+    project_config_t config;    // empty when there is no project.yml
+    bool has_include_dir;       // include/ exists
 
-    build_sources_t main;       // src/main.{c,cpp,...}: 0 ou 1 item
-    build_sources_t lib;        // demais fontes de src/ (sem main e sem bin/)
-    build_sources_t bins;       // src/bin/<nome>.{c,cpp,...}: um executável cada
-    build_sources_t tests;      // tests/<nome>.{c,cpp,...}: um teste cada
+    build_sources_t main;       // src/main.{c,cpp,...}: 0 or 1 item
+    build_sources_t lib;        // other sources in src/ (no main, no bin/)
+    build_sources_t bins;       // src/bin/<name>.{c,cpp,...}: one executable each
+    build_sources_t tests;      // tests/<name>.{c,cpp,...}: one test each
 } build_layout_t;
 
-/* Lê a estrutura do projeto no diretório atual. */
+/* Reads the project structure in the current directory. */
 bool build_layout_load(build_layout_t *layout, bool with_tests);
 void build_layout_clear(build_layout_t *layout);
 
 bool build_layout_uses_lang(build_layout_t *layout, build_lang_t lang, bool with_tests);
 
-/* Indica se o caminho é um fonte C/C++ reconhecido e qual a linguagem. */
+/* Tells whether the path is a known C/C++ source and its language. */
 bool build_source_lang(const char *path, build_lang_t *lang);
 
-/* Diz se o diretório atual parece um projeto idl (tem src/ ou project.yml). */
+/* Tells whether the current directory looks like an idl project (has src/ or project.yml). */
 bool build_layout_is_project(void);
 
 #endif // IDL_BUILD_LAYOUT_H

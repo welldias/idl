@@ -1,7 +1,7 @@
 #include "idl_test.h"
 #include "compiler_command.h"
 
-/* Regressão: o NULL final era gravado em args[count] em vez de args[cmd->count]. */
+/* Regression: the final NULL was written to args[count] instead of args[cmd->count]. */
 static void test_append_keeps_null_terminator(void) {
     compiler_command_t cmd = {0};
     compiler_command_init(&cmd, 2);

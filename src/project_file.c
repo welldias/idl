@@ -74,7 +74,7 @@ static bool project_file_yaml_string_get(yaml_document_t *doc, yaml_node_t *mapp
         return true;
 
     if (node->type != YAML_SCALAR_NODE) {
-        log_error("%s:%zu: '%s' deve ser um valor simples.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
+        log_error("%s:%zu: '%s' must be a scalar value.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
         return false;
     }
 
@@ -93,21 +93,21 @@ static int project_file_yaml_sequence_add(yaml_document_t *doc, list_t *list) {
     return sequence;
 }
 
-/* Lê uma lista de strings. Chave ausente ou vazia não é erro. */
+/* Reads a list of strings. A missing or empty key is not an error. */
 static bool project_file_yaml_list_get(yaml_document_t *doc, yaml_node_t *mapping, const char *key, list_t *list) {
     yaml_node_t *node = project_file_yaml_get(doc, mapping, key);
     if (!node || (node->type == YAML_SCALAR_NODE && node->data.scalar.length == 0))
         return true;
 
     if (node->type != YAML_SEQUENCE_NODE) {
-        log_error("%s:%zu: '%s' deve ser uma lista.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
+        log_error("%s:%zu: '%s' must be a list.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
         return false;
     }
 
     for (yaml_node_item_t *item = node->data.sequence.items.start; item < node->data.sequence.items.top; item++) {
         yaml_node_t *value = yaml_document_get_node(doc, *item);
         if (!value || value->type != YAML_SCALAR_NODE) {
-            log_error("%s:%zu: os itens de '%s' devem ser valores simples.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
+            log_error("%s:%zu: the items of '%s' must be scalar values.", PROJECT_FILE_NAME, node->start_mark.line + 1, key);
             return false;
         }
 
@@ -123,7 +123,7 @@ bool project_file_save(project_config_t *config) {
 
     yaml_document_t doc;
     if (!yaml_document_initialize(&doc, NULL, NULL, NULL, 1, 1)) {
-        log_error("Erro ao criar o documento YAML.");
+        log_error("Failed to create the YAML document.");
         return false;
     }
 
@@ -143,7 +143,7 @@ bool project_file_save(project_config_t *config) {
     if (built)
         built = project_file_yaml_pair_add(&doc, project, "dependencies", project_file_yaml_sequence_add(&doc, &config->dependencies));
 
-    // A seção build só é gravada com as listas que tiverem itens.
+    // The build section is only written with the lists that have items.
     int build = 0;
     for (word i = 0; built && i < SIZE_OF_ARRAY(project_file_build_lists); i++) {
         list_t *list = project_file_build_list(config, i);
@@ -158,14 +158,14 @@ bool project_file_save(project_config_t *config) {
     }
 
     if (!built) {
-        log_error("Erro ao montar o documento YAML.");
+        log_error("Failed to build the YAML document.");
         yaml_document_delete(&doc);
         return false;
     }
 
     FILE *f = fopen(PROJECT_FILE_NAME, "wb");
     if (!f) {
-        log_error("Erro ao tentar salvar o arquivo %s: %s", PROJECT_FILE_NAME, strerror(errno));
+        log_error("Failed to save %s: %s", PROJECT_FILE_NAME, strerror(errno));
         yaml_document_delete(&doc);
         return false;
     }
@@ -175,21 +175,21 @@ bool project_file_save(project_config_t *config) {
     yaml_emitter_set_output_file(&emitter, f);
     yaml_emitter_set_unicode(&emitter, 1);
 
-    // yaml_emitter_dump libera o documento, com ou sem sucesso.
+    // yaml_emitter_dump frees the document, whether it succeeds or not.
     bool result = yaml_emitter_open(&emitter) && yaml_emitter_dump(&emitter, &doc) && yaml_emitter_close(&emitter);
     if (!result)
-        log_error("Erro ao gerar o YAML: %s", emitter.problem ? emitter.problem : "desconhecido");
+        log_error("Failed to write YAML: %s", emitter.problem ? emitter.problem : "unknown error");
 
     yaml_emitter_delete(&emitter);
     if (fclose(f) != 0)
         result = false;
 
     if (!result) {
-        log_error("Erro ao tentar salvar o arquivo %s.", PROJECT_FILE_NAME);
+        log_error("Failed to save %s.", PROJECT_FILE_NAME);
         return false;
     }
 
-    log_debug("Arquivo %s criado com sucesso!", PROJECT_FILE_NAME);
+    log_debug("File %s saved successfully.", PROJECT_FILE_NAME);
     return true;
 }
 
@@ -198,7 +198,7 @@ bool project_file_read(project_config_t *config) {
 
     FILE *f = fopen(PROJECT_FILE_NAME, "rb");
     if (!f) {
-        log_error("Erro ao abrir o arquivo %s: %s", PROJECT_FILE_NAME, strerror(errno));
+        log_error("Failed to open %s: %s", PROJECT_FILE_NAME, strerror(errno));
         return false;
     }
 
@@ -209,7 +209,7 @@ bool project_file_read(project_config_t *config) {
 
     bool loaded = yaml_parser_load(&parser, &doc);
     if (!loaded)
-        log_error("%s:%zu: %s", PROJECT_FILE_NAME, parser.problem_mark.line + 1, parser.problem ? parser.problem : "erro de sintaxe");
+        log_error("%s:%zu: %s", PROJECT_FILE_NAME, parser.problem_mark.line + 1, parser.problem ? parser.problem : "syntax error");
 
     yaml_parser_delete(&parser);
     fclose(f);
@@ -221,7 +221,7 @@ bool project_file_read(project_config_t *config) {
 
     yaml_node_t *project = project_file_yaml_get(&doc, yaml_document_get_root_node(&doc), "project");
     if (!project || project->type != YAML_MAPPING_NODE) {
-        log_error("%s: seção 'project' não encontrada.", PROJECT_FILE_NAME);
+        log_error("%s: section 'project' not found.", PROJECT_FILE_NAME);
         goto cleanup;
     }
 
@@ -235,7 +235,7 @@ bool project_file_read(project_config_t *config) {
 
     yaml_node_t *build = project_file_yaml_get(&doc, yaml_document_get_root_node(&doc), "build");
     if (build && build->type != YAML_MAPPING_NODE) {
-        log_error("%s:%zu: 'build' deve ser uma seção com chaves.", PROJECT_FILE_NAME, build->start_mark.line + 1);
+        log_error("%s:%zu: 'build' must be a section with keys.", PROJECT_FILE_NAME, build->start_mark.line + 1);
         goto cleanup;
     }
 

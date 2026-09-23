@@ -1,4 +1,4 @@
-# Linha de comando: ajuda, comando desconhecido e códigos de saída.
+# Command line: help, unknown command and exit codes.
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
 idl("${WORK_DIR}")
@@ -12,7 +12,7 @@ expect_contains("${IDL_OUTPUT}" "clean    Remove the build directory")
 idl("${WORK_DIR}" EXPECT 1 ARGS comando-inexistente)
 expect_contains("${IDL_OUTPUT}" "Unknown command: comando-inexistente")
 
-# Comandos de projeto fora de um projeto falham.
+# Project commands fail outside a project.
 idl("${WORK_DIR}" EXPECT 1 ARGS add zlib)
 expect_contains("${IDL_OUTPUT}" "Project file not found")
 idl("${WORK_DIR}" EXPECT 1 ARGS build)

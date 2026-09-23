@@ -5,7 +5,7 @@ static void test_strndup(void) {
     CHECK_STR(s, "hel");
     free(s);
 
-    s = strutils_strndup("hi", 10); // para no fim da string
+    s = strutils_strndup("hi", 10); // stops at the end of the string
     CHECK_STR(s, "hi");
     free(s);
 
@@ -83,12 +83,12 @@ static void test_conversions(void) {
     CHECK(b);
     CHECK(strutils_str_tobool("false", &b));
     CHECK(!b);
-    CHECK(strutils_str_tobool("sim", &b));
+    CHECK(strutils_str_tobool("yes", &b));
     CHECK(!b);
 
     char *s = nullptr;
-    CHECK(strutils_str_tostr("texto", &s));
-    CHECK_STR(s, "texto");
+    CHECK(strutils_str_tostr("text", &s));
+    CHECK_STR(s, "text");
     free(s);
 
     CHECK(!strutils_str_toint(nullptr, &i));
@@ -117,7 +117,7 @@ static void test_split(void) {
     CHECK(!strutils_split("", ',', &parts, &count));
 }
 
-/* Regressão: o último item apontava para memória já liberada. */
+/* Regression: the last item pointed to memory that was already freed. */
 static void test_str_to_list(void) {
     const char *path = "/usr/bin: /bin ::/opt/last";
     list_t list = {0};
@@ -130,12 +130,12 @@ static void test_str_to_list(void) {
     CHECK(idl_test_list_has(&list, "/opt/last"));
     list_clear(&list);
 
-    CHECK(strutils_str_to_list("sozinho\n", 8, ':', &list));
+    CHECK(strutils_str_to_list("alone\n", 8, ':', &list));
     CHECK_INT(list_count(&list), 1);
-    CHECK_STR((const char *)list.head->value, "sozinho");
+    CHECK_STR((const char *)list.head->value, "alone");
     list_clear(&list);
 
-    // Usado para dividir a saída do pkg-config.
+    // Used to split the pkg-config output.
     const char *flags = "-I/usr/include/x  -DFOO\n";
     CHECK(strutils_str_to_list(flags, strlen(flags), ' ', &list));
     CHECK_INT(list_count(&list), 2);

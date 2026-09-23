@@ -1,30 +1,30 @@
-# idl init: cria project.yml, README.md e src/main.c sem sobrescrever nada; idl add.
+# idl init: creates project.yml, README.md and src/main.c without overwriting anything; idl add.
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
-set(dir "${WORK_DIR}/meu_app")
+set(dir "${WORK_DIR}/my_app")
 file(MAKE_DIRECTORY "${dir}")
-file(WRITE "${dir}/README.md" "# já existia\n")
+file(WRITE "${dir}/README.md" "# already here\n")
 
 idl("${dir}" ARGS init)
-expect_contains("${IDL_OUTPUT}" "Project 'meu_app' initialized successfully")
+expect_contains("${IDL_OUTPUT}" "Project 'my_app' initialized successfully")
 expect_exists("${dir}/project.yml")
 expect_exists("${dir}/src/main.c")
 
 file(READ "${dir}/README.md" readme)
-expect_contains("${readme}" "# já existia")
+expect_contains("${readme}" "# already here")
 
 file(READ "${dir}/project.yml" yml)
-expect_contains("${yml}" "name: meu_app")
+expect_contains("${yml}" "name: my_app")
 expect_contains("${yml}" "requires-c: C23")
 
 file(READ "${dir}/src/main.c" main_c)
-expect_contains("${main_c}" "Hello from meu_app!")
+expect_contains("${main_c}" "Hello from my_app!")
 
-# O projeto recém-criado já compila e roda.
+# The freshly created project already builds and runs.
 idl("${dir}" ARGS run)
-expect_contains("${IDL_OUTPUT}" "Hello from meu_app!")
+expect_contains("${IDL_OUTPUT}" "Hello from my_app!")
 
-# Não reinicializa um projeto existente.
+# Does not re-initialize an existing project.
 idl("${dir}" EXPECT 1 ARGS init)
 expect_contains("${IDL_OUTPUT}" "already initialized")
 
@@ -34,19 +34,19 @@ idl("${dir}" ARGS add m)
 file(READ "${dir}/project.yml" yml)
 count_occurrences("${yml}" "- m" deps)
 if(NOT deps EQUAL 1)
-	message(FATAL_ERROR "Dependência duplicada:\n${yml}")
+	message(FATAL_ERROR "Duplicated dependency:\n${yml}")
 endif()
 idl("${dir}" EXPECT 1 ARGS add)
 
-# Um main.cpp existente não ganha um main.c ao lado.
+# An existing main.cpp does not get a main.c next to it.
 set(cpp_dir "${WORK_DIR}/app_cpp")
 file(WRITE "${cpp_dir}/src/main.cpp" "int main() { return 0; }\n")
 idl("${cpp_dir}" ARGS init)
 expect_not_exists("${cpp_dir}/src/main.c")
 
-# Nome com espaço e aspas vira uma string C válida.
-set(odd_dir "${WORK_DIR}/meu \"app\"")
+# A name with spaces and quotes becomes a valid C string.
+set(odd_dir "${WORK_DIR}/my \"app\"")
 file(MAKE_DIRECTORY "${odd_dir}")
 idl("${odd_dir}" ARGS init)
 idl("${odd_dir}" ARGS run)
-expect_contains("${IDL_OUTPUT}" "Hello from meu \"app\"!")
+expect_contains("${IDL_OUTPUT}" "Hello from my \"app\"!")

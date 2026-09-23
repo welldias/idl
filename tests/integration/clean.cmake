@@ -1,4 +1,4 @@
-# idl clean: remove build/ somente dentro de um projeto.
+# idl clean: removes build/ only inside a project.
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
 use_fixture(c_basic)
@@ -7,17 +7,17 @@ idl("${PROJECT_DIR}" ARGS build)
 expect_exists("${PROJECT_DIR}/build")
 
 idl("${PROJECT_DIR}" ARGS clean)
-expect_contains("${IDL_OUTPUT}" "Removido build/")
+expect_contains("${IDL_OUTPUT}" "Removed build/")
 expect_not_exists("${PROJECT_DIR}/build")
 expect_exists("${PROJECT_DIR}/src/main.c")
 
 idl("${PROJECT_DIR}" ARGS clean)
-expect_contains("${IDL_OUTPUT}" "Nada a limpar")
+expect_contains("${IDL_OUTPUT}" "Nothing to clean")
 
-# Fora de um projeto, não apaga um build/ qualquer.
-file(WRITE "${WORK_DIR}/outro/build/importante.txt" "não apagar\n")
-idl("${WORK_DIR}/outro" EXPECT 1 ARGS clean)
-expect_exists("${WORK_DIR}/outro/build/importante.txt")
+# Outside a project, it does not delete some random build/.
+file(WRITE "${WORK_DIR}/other/build/important.txt" "do not delete\n")
+idl("${WORK_DIR}/other" EXPECT 1 ARGS clean)
+expect_exists("${WORK_DIR}/other/build/important.txt")
 
 # --project
 idl("${PROJECT_DIR}" ARGS build)

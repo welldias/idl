@@ -2,15 +2,15 @@
 #include "build_toolchain.h"
 
 static void test_env_override(void) {
-    idl_test_setenv("CC", "meu-cc");
-    idl_test_setenv("CXX", "meu-cxx");
-    idl_test_setenv("AR", "meu-ar");
+    idl_test_setenv("CC", "my-cc");
+    idl_test_setenv("CXX", "my-cxx");
+    idl_test_setenv("AR", "my-ar");
 
     build_toolchain_t toolchain;
     CHECK(build_toolchain_init(&toolchain, true, true));
-    CHECK_STR(toolchain.cc, "meu-cc");
-    CHECK_STR(toolchain.cxx, "meu-cxx");
-    CHECK_STR(toolchain.ar, "meu-ar");
+    CHECK_STR(toolchain.cc, "my-cc");
+    CHECK_STR(toolchain.cxx, "my-cxx");
+    CHECK_STR(toolchain.ar, "my-ar");
     build_toolchain_clear(&toolchain);
 
     idl_test_setenv("CC", nullptr);
@@ -19,11 +19,11 @@ static void test_env_override(void) {
 }
 
 static void test_only_needed_compilers(void) {
-    idl_test_setenv("CC", "meu-cc");
+    idl_test_setenv("CC", "my-cc");
 
     build_toolchain_t toolchain;
     CHECK(build_toolchain_init(&toolchain, true, false));
-    CHECK_STR(toolchain.cc, "meu-cc");
+    CHECK_STR(toolchain.cc, "my-cc");
     CHECK(toolchain.cxx == nullptr);
     CHECK_STR(toolchain.ar, "ar");
     build_toolchain_clear(&toolchain);
@@ -45,7 +45,7 @@ static void test_no_compiler_in_path(void) {
     CHECK(!build_toolchain_init(&toolchain, false, true));
     build_toolchain_clear(&toolchain);
 
-    CHECK(build_toolchain_init(&toolchain, false, false)); // nada é necessário
+    CHECK(build_toolchain_init(&toolchain, false, false)); // nothing is needed
     build_toolchain_clear(&toolchain);
 
     idl_test_setenv("PATH", old_path);
@@ -58,7 +58,7 @@ static void test_resolve_deps(void) {
     list_add(&deps, strdup("m"));
     list_add(&deps, strdup("pthread"));
     list_add(&deps, strdup("dl"));
-    list_add(&deps, strdup("idl-lib-que-nao-existe"));
+    list_add(&deps, strdup("idl-missing-lib"));
 
     build_toolchain_t toolchain;
     build_toolchain_init(&toolchain, false, false);
@@ -68,8 +68,8 @@ static void test_resolve_deps(void) {
     CHECK(idl_test_list_has(&toolchain.ldflags, "-ldl"));
     CHECK(idl_test_list_has(&toolchain.ldflags, "-pthread"));
     CHECK(idl_test_list_has(&toolchain.cflags, "-pthread"));
-    // Desconhecida pelo pkg-config (ou sem pkg-config): usa -l<nome>.
-    CHECK(idl_test_list_has(&toolchain.ldflags, "-lidl-lib-que-nao-existe"));
+    // Unknown to pkg-config (or no pkg-config): uses -l<name>.
+    CHECK(idl_test_list_has(&toolchain.ldflags, "-lidl-missing-lib"));
 
     build_toolchain_clear(&toolchain);
     list_clear(&deps);

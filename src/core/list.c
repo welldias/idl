@@ -115,7 +115,7 @@ bool list_contains(list_t *list, const void *value, list_compare_cb compare_cb) 
 /*****************************************************************************/
 static void list_item_clear(list_item_t *item, common_item_destroy_cb destroy_cb) {
     if (item == nullptr)
-        return; // lista vazia
+        return; // empty list
 
     if (item->next != nullptr)
         list_item_clear(item->next, destroy_cb);

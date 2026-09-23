@@ -1,7 +1,7 @@
 #include <stdio.h>
-#include "soma.h"
+#include "sum.h"
 
 int main(void) {
-    printf("soma(2, 2) = %d\n", soma(2, 2));
+    printf("sum(2, 2) = %d\n", sum(2, 2));
     return 0;
 }

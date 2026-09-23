@@ -10,13 +10,13 @@ void cmd_args_parse(cmd_args_t *args, int argc, char *argv[], int start_index) {
     for (int i = start_index; i < argc; i++) {
         if (argv[i][0] == '-') {
             const char *key = argv[i];
-            while (*key == '-') key++; // Ignora os prefixos '-' ou '--'
+            while (*key == '-') key++; // Skip the '-' or '--' prefix
 
             const char *value = nullptr;
-            // Se existir um próximo item e ele não for uma nova flag, ele é o valor.
+            // If there is a next item and it is not another flag, it is the value.
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 value = argv[i + 1];
-                i++; // Pula o item, pois já foi processado como valor
+                i++; // Skip the item, it was consumed as the value
             }
 
             cmd_arg_opt_t *opt = (cmd_arg_opt_t *)malloc(sizeof(cmd_arg_opt_t));
@@ -24,7 +24,7 @@ void cmd_args_parse(cmd_args_t *args, int argc, char *argv[], int start_index) {
                 opt->key = strdup(key);
                 opt->value = value ? strdup(value) : nullptr;
                 
-                // Insere no início da lista
+                // Insert at the head of the list
                 opt->next = args->head;
                 args->head = opt;
             }

@@ -40,13 +40,13 @@ static void test_all_succeed(void) {
 static void test_failure_is_reported(void) {
     jobs_t jobs = {0};
     add_job(&jobs, false, 1, (char *[]){ IDL_TEST_FAKE_TOOL });
-    add_job(&jobs, false, 5, (char *[]){ IDL_TEST_FAKE_TOOL, "--stderr", "erro de teste\n", "--exit", "2" });
+    add_job(&jobs, false, 5, (char *[]){ IDL_TEST_FAKE_TOOL, "--stderr", "test error\n", "--exit", "2" });
     add_job(&jobs, false, 1, (char *[]){ IDL_TEST_FAKE_TOOL });
 
     CHECK(!process_runner_run(jobs.jobs, jobs.count, 0));
     CHECK_INT(jobs.jobs[0].exit_status, 0);
     CHECK_INT(jobs.jobs[1].exit_status, 2);
-    CHECK_INT(jobs.jobs[2].exit_status, 0); // os demais continuam executando
+    CHECK_INT(jobs.jobs[2].exit_status, 0); // the others keep running
 
     clear_jobs(&jobs);
 }
@@ -65,7 +65,7 @@ static void test_capture_output(void) {
 
 static void test_spawn_failure(void) {
     jobs_t jobs = {0};
-    add_job(&jobs, true, 1, (char *[]){ "programa-que-nao-existe-idl" });
+    add_job(&jobs, true, 1, (char *[]){ "idl-missing-program" });
     add_job(&jobs, false, 1, (char *[]){ IDL_TEST_FAKE_TOOL });
 
     CHECK(!process_runner_run(jobs.jobs, jobs.count, 0));

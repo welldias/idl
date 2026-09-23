@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-int c_dobro(int x);
+int c_double(int x);
 
 #ifdef __cplusplus
 }

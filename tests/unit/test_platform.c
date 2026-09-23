@@ -11,13 +11,13 @@ static void test_make_dirs(void) {
     CHECK(platform_make_dirs("a/b/c"));
     CHECK(platform_dir_exists("a"));
     CHECK(platform_dir_exists("a/b/c"));
-    CHECK(platform_make_dirs("a/b/c")); // já existe: não é erro
+    CHECK(platform_make_dirs("a/b/c")); // already exists: not an error
 
-    idl_test_write("arquivo", "x");
-    CHECK(!platform_make_dirs("arquivo")); // existe, mas não é diretório
+    idl_test_write("file", "x");
+    CHECK(!platform_make_dirs("file")); // exists, but is not a directory
 }
 
-/* Regressão: no Unix, platform_file_exists retornava true só para diretórios. */
+/* Regression: on Unix, platform_file_exists returned true only for directories. */
 static void test_exists(void) {
     idl_test_enter_dir("exists");
     platform_make_dirs("dir");
@@ -25,17 +25,17 @@ static void test_exists(void) {
 
     CHECK(platform_file_exists("file.txt"));
     CHECK(!platform_file_exists("dir"));
-    CHECK(!platform_file_exists("nao-existe"));
+    CHECK(!platform_file_exists("does-not-exist"));
 
     CHECK(platform_dir_exists("dir"));
     CHECK(!platform_dir_exists("file.txt"));
-    CHECK(!platform_dir_exists("nao-existe"));
+    CHECK(!platform_dir_exists("does-not-exist"));
 }
 
 static void test_mtime(void) {
     idl_test_enter_dir("mtime");
 
-    CHECK_INT(platform_file_mtime("nao-existe"), -1);
+    CHECK_INT(platform_file_mtime("does-not-exist"), -1);
 
     idl_test_write("old.txt", "x");
     idl_test_write("new.txt", "x");
@@ -65,7 +65,7 @@ static void test_remove_tree(void) {
     CHECK(platform_remove_tree("solo.txt"));
     CHECK(!platform_file_exists("solo.txt"));
 
-    CHECK(platform_remove_tree("nao-existe"));
+    CHECK(platform_remove_tree("does-not-exist"));
 }
 
 static void test_scan_directory(void) {
@@ -82,7 +82,7 @@ static void test_scan_directory(void) {
     CHECK(platform_scan_directory("src", nullptr, count_file, &all_files));
     CHECK_INT(all_files, 3);
 
-    CHECK(!platform_scan_directory("nao-existe", nullptr, count_file, &all_files));
+    CHECK(!platform_scan_directory("does-not-exist", nullptr, count_file, &all_files));
 }
 
 static void test_exec(void) {
@@ -92,7 +92,7 @@ static void test_exec(void) {
     char *fail[] = { IDL_TEST_FAKE_TOOL, "--exit", "3", nullptr };
     CHECK_INT(platform_exec(fail), 3);
 
-    char *missing[] = { "programa-que-nao-existe-idl", nullptr };
+    char *missing[] = { "idl-missing-program", nullptr };
     CHECK_INT(platform_exec(missing), -1);
 }
 
@@ -101,8 +101,8 @@ static void test_misc(void) {
     CHECK(platform_file_is_binary(IDL_TEST_FAKE_TOOL));
 
     idl_test_enter_dir("misc");
-    idl_test_write("texto.txt", "nao sou binario");
-    CHECK(!platform_file_is_binary("texto.txt"));
+    idl_test_write("text.txt", "not a binary");
+    CHECK(!platform_file_is_binary("text.txt"));
 }
 
 int main(void) {

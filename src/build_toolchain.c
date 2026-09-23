@@ -30,7 +30,7 @@ bool build_toolchain_init(build_toolchain_t *toolchain, bool need_c, bool need_c
     if (need_c) {
         toolchain->cc = build_toolchain_pick(&compilers, "CC", COMPILER_GCC, COMPILER_CLANG);
         if (!toolchain->cc) {
-            log_error("Nenhum compilador C encontrado (procurei CC, gcc e clang).");
+            log_error("No C compiler found (looked for CC, gcc and clang).");
             result = false;
         }
     }
@@ -38,7 +38,7 @@ bool build_toolchain_init(build_toolchain_t *toolchain, bool need_c, bool need_c
     if (need_cxx) {
         toolchain->cxx = build_toolchain_pick(&compilers, "CXX", COMPILER_GXX, COMPILER_CLANGXX);
         if (!toolchain->cxx) {
-            log_error("Nenhum compilador C++ encontrado (procurei CXX, g++ e clang++).");
+            log_error("No C++ compiler found (looked for CXX, g++ and clang++).");
             result = false;
         }
     }
@@ -59,7 +59,7 @@ static void build_toolchain_add_output(list_t *list, const char *output) {
         strutils_str_to_list(output, strlen(output), ' ', list);
 }
 
-/* Consulta o pkg-config. Retorna false se ele não existir ou não conhecer o pacote. */
+/* Queries pkg-config. Returns false if it is missing or does not know the package. */
 static bool build_toolchain_pkg_config(build_toolchain_t *toolchain, const char *name) {
     compiler_command_t cmds[2] = {0};
     process_job_t jobs[2] = {0};
@@ -99,7 +99,7 @@ bool build_toolchain_resolve_deps(build_toolchain_t *toolchain, list_t *dependen
             char *flag = strutils_format("-l%s", name);
             list_add(&toolchain->ldflags, flag);
         } else if (!build_toolchain_pkg_config(toolchain, name)) {
-            log_warn("Dependência '%s' não encontrada no pkg-config; usando -l%s.", name, name);
+            log_warn("Dependency '%s' not found by pkg-config; using -l%s.", name, name);
             list_add(&toolchain->ldflags, strutils_format("-l%s", name));
         }
     }

@@ -4,7 +4,7 @@
 #include <mix/api.h>
 
 int main() {
-    std::vector<std::string> partes = {"cxx", "mix"};
-    std::cout << partes[0] << "+" << partes[1] << " dobro=" << c_dobro(21) << std::endl;
+    std::vector<std::string> parts = {"cxx", "mix"};
+    std::cout << parts[0] << "+" << parts[1] << " double=" << c_double(21) << std::endl;
     return 0;
 }

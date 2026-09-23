@@ -24,7 +24,7 @@ static void test_init_empty(void) {
     CHECK(list_init(&list, free));
     CHECK_INT(list_count(&list), 0);
     CHECK(list.head == nullptr);
-    CHECK(list_clear(&list)); // lista vazia não é erro
+    CHECK(list_clear(&list)); // an empty list is not an error
 }
 
 static void test_add_keeps_order(void) {
@@ -50,7 +50,7 @@ static void test_contains(void) {
     list_clear(&list);
 }
 
-/* Regressão: list_remove removia o primeiro item diferente do procurado. */
+/* Regression: list_remove removed the first item that did NOT match. */
 static void test_remove_matching_item(void) {
     const char *values[] = { "a", "b", "c" };
     list_t list = make_list(free, values, 3);
@@ -64,7 +64,7 @@ static void test_remove_matching_item(void) {
     list_remove(&list, "a", str_equals);
     CHECK_STR((const char *)list.head->value, "c");
 
-    list_remove(&list, "nao-existe", str_equals);
+    list_remove(&list, "does-not-exist", str_equals);
     CHECK_INT(list_count(&list), 1);
 
     list_clear(&list);
@@ -81,7 +81,7 @@ static void test_clear_calls_destroy(void) {
     CHECK(list.head == nullptr);
 }
 
-/* Regressão: sem destroy_cb, list_clear não liberava os nós. */
+/* Regression: without destroy_cb, list_clear did not free the nodes. */
 static void test_clear_without_destroy(void) {
     char a[] = "a", b[] = "b";
     list_t list = {0};
@@ -91,7 +91,7 @@ static void test_clear_without_destroy(void) {
 
     list_clear(&list);
     CHECK_INT(list_count(&list), 0);
-    CHECK_STR(a, "a"); // os valores não são liberados
+    CHECK_STR(a, "a"); // the values are not freed
 }
 
 static void test_create_destroy(void) {

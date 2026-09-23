@@ -2,7 +2,7 @@
 #include "cmd_args.h"
 #include "build_plan.h"
 
-/* idl run [--release] [--bin <nome>] [--project <dir>] [-- argumentos do programa] */
+/* idl run [--release] [--bin <name>] [--project <dir>] [-- program arguments] */
 int handle_param_run(int argc, char *argv[]) {
     int separator = argc;
     for (int i = 2; i < argc; i++) {
@@ -43,7 +43,7 @@ int handle_param_run(int argc, char *argv[]) {
                 }
             }
             if (bins > 1) {
-                log_error("Há vários executáveis em src/bin/; escolha um com --bin <nome>.");
+                log_error("There are several executables in src/bin/; choose one with --bin <name>.");
                 goto cleanup;
             }
         }
@@ -51,9 +51,9 @@ int handle_param_run(int argc, char *argv[]) {
 
     if (!artifact) {
         if (bin_name)
-            log_error("Executável '%s' não encontrado.", bin_name);
+            log_error("Executable '%s' not found.", bin_name);
         else
-            log_error("O projeto não gera executável (crie src/main.c ou arquivos em src/bin/).");
+            log_error("The project has no executable (create src/main.c or files in src/bin/).");
         goto cleanup;
     }
 
@@ -68,7 +68,7 @@ int handle_param_run(int argc, char *argv[]) {
     for (int i = 0; i < extra; i++)
         program_argv[i + 1] = argv[separator + 1 + i];
 
-    printf("Executando %s\n", artifact->path);
+    printf("Running %s\n", artifact->path);
     fflush(stdout);
     exit_code = platform_exec(program_argv);
     if (exit_code < 0)

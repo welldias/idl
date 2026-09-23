@@ -14,20 +14,20 @@ int handle_param_clean(int argc, char *argv[]) {
     if (!result)
         return 1;
 
-    // Só apaga build/ se aqui for mesmo um projeto, para não remover o diretório errado.
+    // Only delete build/ inside a real project, so we never remove the wrong directory.
     if (!build_layout_is_project()) {
-        log_error("Nenhum projeto aqui (não há %s/ nem %s).", BUILD_SRC_DIR, PROJECT_FILE_NAME);
+        log_error("No project here (neither %s/ nor %s found).", BUILD_SRC_DIR, PROJECT_FILE_NAME);
         return 1;
     }
 
     if (!platform_dir_exists(BUILD_OUT_DIR)) {
-        printf("Nada a limpar.\n");
+        printf("Nothing to clean.\n");
         return 0;
     }
 
     if (!platform_remove_tree(BUILD_OUT_DIR))
         return 1;
 
-    printf("Removido %s/\n", BUILD_OUT_DIR);
+    printf("Removed %s/\n", BUILD_OUT_DIR);
     return 0;
 }

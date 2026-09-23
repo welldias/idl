@@ -2,41 +2,41 @@
 #include "cmd_args.h"
 
 static void test_parse_values_and_flags(void) {
-    char *argv[] = { "idl", "build", "--release", "--project", "meu dir", "-p", "x", "solto" };
+    char *argv[] = { "idl", "build", "--release", "--project", "my dir", "-p", "x", "loose" };
     cmd_args_t args = {0};
     cmd_args_parse(&args, 8, argv, 2);
 
     CHECK(cmd_args_has_flag(&args, "release"));
-    CHECK(cmd_args_get_value(&args, "release") == nullptr); // o próximo item é outra opção
-    CHECK_STR(cmd_args_get_value(&args, "project"), "meu dir");
+    CHECK(cmd_args_get_value(&args, "release") == nullptr); // the next item is another option
+    CHECK_STR(cmd_args_get_value(&args, "project"), "my dir");
     CHECK_STR(cmd_args_get_value(&args, "p"), "x");
-    CHECK(!cmd_args_has_flag(&args, "solto"));
-    CHECK(!cmd_args_has_flag(&args, "nao-existe"));
-    CHECK(cmd_args_get_value(&args, "nao-existe") == nullptr);
+    CHECK(!cmd_args_has_flag(&args, "loose"));
+    CHECK(!cmd_args_has_flag(&args, "does-not-exist"));
+    CHECK(cmd_args_get_value(&args, "does-not-exist") == nullptr);
 
     cmd_args_clear(&args);
     CHECK(args.head == nullptr);
 }
 
 static void test_start_index(void) {
-    char *argv[] = { "idl", "--ignorado", "run", "--bin", "tool" };
+    char *argv[] = { "idl", "--ignored", "run", "--bin", "tool" };
     cmd_args_t args = {0};
     cmd_args_parse(&args, 5, argv, 3);
 
-    CHECK(!cmd_args_has_flag(&args, "ignorado"));
+    CHECK(!cmd_args_has_flag(&args, "ignored"));
     CHECK_STR(cmd_args_get_value(&args, "bin"), "tool");
 
     cmd_args_clear(&args);
 }
 
-/* Comportamento atual: uma opção seguida de um item solto recebe esse item como valor. */
+/* Current behavior: an option followed by a loose item takes that item as its value. */
 static void test_flag_consumes_next_item(void) {
-    char *argv[] = { "idl", "test", "--release", "nome" };
+    char *argv[] = { "idl", "test", "--release", "name" };
     cmd_args_t args = {0};
     cmd_args_parse(&args, 4, argv, 2);
 
     CHECK(cmd_args_has_flag(&args, "release"));
-    CHECK_STR(cmd_args_get_value(&args, "release"), "nome");
+    CHECK_STR(cmd_args_get_value(&args, "release"), "name");
 
     cmd_args_clear(&args);
 }

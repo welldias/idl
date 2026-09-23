@@ -26,7 +26,7 @@ static void test_save_and_read_basic(void) {
 
     CHECK(project_file_exist());
 
-    // Sem requires-cpp nem listas em build, essas chaves não aparecem no arquivo.
+    // Without requires-cpp or build lists, those keys are not written to the file.
     char *text = idl_test_read(PROJECT_FILE_NAME);
     CHECK(text && strstr(text, "project:"));
     CHECK(text && !strstr(text, "requires-cpp"));
@@ -51,9 +51,9 @@ static void test_full_roundtrip(void) {
 
     project_config_t config = {0};
     project_file_config_init(&config);
-    project_file_name_set(&config, "nome: \"estranho\"");
+    project_file_name_set(&config, "name: \"weird\"");
     project_file_version_set(&config, "1.0");
-    project_file_description_set(&config, "linha1\nlinha2");
+    project_file_description_set(&config, "line1\nline2");
     project_file_requires_c_set(&config, "C17");
     project_file_requires_cpp_set(&config, "C++20");
     project_file_dependency_add(&config, "zlib");
@@ -73,9 +73,9 @@ static void test_full_roundtrip(void) {
 
     project_file_config_init(&config);
     CHECK(project_file_read(&config));
-    CHECK_STR(config.name, "nome: \"estranho\"");
+    CHECK_STR(config.name, "name: \"weird\"");
     CHECK_STR(config.version, "1.0");
-    CHECK_STR(config.description, "linha1\nlinha2");
+    CHECK_STR(config.description, "line1\nline2");
     CHECK_STR(config.requires_c, "C17");
     CHECK_STR(config.requires_cpp, "C++20");
     CHECK_INT(config.dependencies.count, 2);
@@ -95,7 +95,7 @@ static void test_dependencies(void) {
     project_file_config_init(&config);
 
     CHECK(project_file_dependency_add(&config, "zlib"));
-    CHECK(project_file_dependency_add(&config, "zlib")); // sem duplicar
+    CHECK(project_file_dependency_add(&config, "zlib")); // no duplicates
     CHECK(project_file_dependency_add(&config, "m"));
     CHECK_INT(config.dependencies.count, 2);
 
@@ -110,7 +110,7 @@ static void test_dependencies(void) {
 static void test_hand_written_file(void) {
     idl_test_enter_dir("hand");
     idl_test_write(PROJECT_FILE_NAME,
-        "# comentário\n"
+        "# comment\n"
         "project:\n"
         "  name: manual\n"
         "  dependencies:\n"
@@ -140,7 +140,7 @@ static void check_invalid(const char *name, const char *content) {
 
 static void test_invalid_files(void) {
     check_invalid("syntax", "project: {\n");
-    check_invalid("no_project", "outro:\n  name: x\n");
+    check_invalid("no_project", "other:\n  name: x\n");
     check_invalid("project_list", "project: [1, 2]\n");
     check_invalid("name_list", "project:\n  name: [a]\n");
     check_invalid("deps_scalar", "project:\n  dependencies: zlib\n");

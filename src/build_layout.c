@@ -2,7 +2,7 @@
 
 typedef struct {
     build_layout_t *layout;
-    const char *root;   // diretório varrido ("src" ou "tests")
+    const char *root;   // directory being scanned ("src" or "tests")
     bool ok;
 } build_layout_scan_t;
 
@@ -91,18 +91,18 @@ static void build_layout_on_file(const char *full_path, void *arg) {
     if (!build_source_lang(path, &lang))
         return;
 
-    const char *rest = path + strlen(scan->root) + 1; // caminho dentro de src/ ou tests/
+    const char *rest = path + strlen(scan->root) + 1; // path inside src/ or tests/
     build_sources_t *target = nullptr;
 
     if (strcmp(scan->root, BUILD_TESTS_DIR) == 0) {
         if (strchr(rest, '/')) {
-            log_warn("%s ignorado: apenas arquivos diretamente em tests/ viram testes.", path);
+            log_warn("%s ignored: only files directly in tests/ become tests.", path);
             return;
         }
         target = &layout->tests;
     } else if (strncmp(rest, "bin/", 4) == 0) {
         if (strchr(rest + 4, '/')) {
-            log_warn("%s ignorado: apenas arquivos diretamente em src/bin/ viram executáveis.", path);
+            log_warn("%s ignored: only files directly in src/bin/ become executables.", path);
             return;
         }
         target = &layout->bins;
@@ -160,7 +160,7 @@ bool build_layout_load(build_layout_t *layout, bool with_tests) {
         layout->name = build_layout_dir_name();
 
     if (!platform_dir_exists(BUILD_SRC_DIR)) {
-        log_error("Diretório %s/ não encontrado. Os fontes do projeto devem ficar em %s/.", BUILD_SRC_DIR, BUILD_SRC_DIR);
+        log_error("Directory %s/ not found. The project sources must be in %s/.", BUILD_SRC_DIR, BUILD_SRC_DIR);
         return false;
     }
 
@@ -178,18 +178,18 @@ bool build_layout_load(build_layout_t *layout, bool with_tests) {
     build_sources_sort(&layout->tests);
 
     if (layout->main.count > 1) {
-        log_error("Mais de um main em %s/: %s e %s.", BUILD_SRC_DIR, layout->main.items[0].path, layout->main.items[1].path);
+        log_error("More than one main in %s/: %s and %s.", BUILD_SRC_DIR, layout->main.items[0].path, layout->main.items[1].path);
         return false;
     }
 
     if (layout->main.count + layout->lib.count + layout->bins.count == 0) {
-        log_error("Nenhum fonte C/C++ encontrado em %s/.", BUILD_SRC_DIR);
+        log_error("No C/C++ sources found in %s/.", BUILD_SRC_DIR);
         return false;
     }
 
     for (word i = 0; i < layout->bins.count; i++) {
         if (layout->main.count && strcmp(layout->bins.items[i].stem, layout->name) == 0) {
-            log_error("%s gera um executável com o mesmo nome do projeto (%s).", layout->bins.items[i].path, layout->name);
+            log_error("%s produces an executable with the same name as the project (%s).", layout->bins.items[i].path, layout->name);
             return false;
         }
     }

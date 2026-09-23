@@ -1,52 +1,52 @@
-# Erros de build devolvem código diferente de 0 e mensagens claras.
+# Build errors return a non-zero exit code and clear messages.
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
-# Erro de compilação.
+# Compilation error.
 use_fixture(c_basic)
-file(APPEND "${PROJECT_DIR}/src/util.c" "int quebrado( {\n")
+file(APPEND "${PROJECT_DIR}/src/util.c" "int broken( {\n")
 idl("${PROJECT_DIR}" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "Compilando src/util.c: falhou")
-expect_contains("${IDL_OUTPUT}" "Falha na compilação")
-expect_not_contains("${IDL_OUTPUT}" "Linkando")
+expect_contains("${IDL_OUTPUT}" "Compiling src/util.c: failed")
+expect_contains("${IDL_OUTPUT}" "Compilation failed")
+expect_not_contains("${IDL_OUTPUT}" "Linking")
 
-# Erro de linkagem (função declarada e nunca definida).
+# Link error (function declared but never defined).
 set(link_dir "${WORK_DIR}/link_error")
-file(WRITE "${link_dir}/src/main.c" "int nao_existe(void);\nint main(void) { return nao_existe(); }\n")
+file(WRITE "${link_dir}/src/main.c" "int does_not_exist(void);\nint main(void) { return does_not_exist(); }\n")
 idl("${link_dir}" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "Falha na linkagem")
+expect_contains("${IDL_OUTPUT}" "Linking failed")
 
-# Sem src/.
-file(MAKE_DIRECTORY "${WORK_DIR}/sem_src")
-idl("${WORK_DIR}/sem_src" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "src/ não encontrado")
+# No src/.
+file(MAKE_DIRECTORY "${WORK_DIR}/no_src")
+idl("${WORK_DIR}/no_src" EXPECT 1 ARGS build)
+expect_contains("${IDL_OUTPUT}" "src/ not found")
 
-# src/ sem fontes.
-file(WRITE "${WORK_DIR}/vazio/src/leia.txt" "nada aqui\n")
-idl("${WORK_DIR}/vazio" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "Nenhum fonte C/C++")
+# src/ without sources.
+file(WRITE "${WORK_DIR}/empty/src/readme.txt" "nothing here\n")
+idl("${WORK_DIR}/empty" EXPECT 1 ARGS build)
+expect_contains("${IDL_OUTPUT}" "No C/C++ sources")
 
-# Dois mains.
-file(WRITE "${WORK_DIR}/dois_mains/src/main.c" "int main(void) { return 0; }\n")
-file(WRITE "${WORK_DIR}/dois_mains/src/main.cpp" "int main() { return 0; }\n")
-idl("${WORK_DIR}/dois_mains" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "Mais de um main")
+# Two mains.
+file(WRITE "${WORK_DIR}/two_mains/src/main.c" "int main(void) { return 0; }\n")
+file(WRITE "${WORK_DIR}/two_mains/src/main.cpp" "int main() { return 0; }\n")
+idl("${WORK_DIR}/two_mains" EXPECT 1 ARGS build)
+expect_contains("${IDL_OUTPUT}" "More than one main")
 
-# project.yml inválido.
-file(WRITE "${WORK_DIR}/yml_ruim/src/main.c" "int main(void) { return 0; }\n")
-file(WRITE "${WORK_DIR}/yml_ruim/project.yml" "project: [\n")
-idl("${WORK_DIR}/yml_ruim" EXPECT 1 ARGS build)
+# Invalid project.yml.
+file(WRITE "${WORK_DIR}/bad_yml/src/main.c" "int main(void) { return 0; }\n")
+file(WRITE "${WORK_DIR}/bad_yml/project.yml" "project: [\n")
+idl("${WORK_DIR}/bad_yml" EXPECT 1 ARGS build)
 
-# Diretório de projeto inexistente.
-idl("${WORK_DIR}" EXPECT 1 ARGS build --project nao-existe)
-expect_contains("${IDL_OUTPUT}" "nao-existe")
+# Project directory does not exist.
+idl("${WORK_DIR}" EXPECT 1 ARGS build --project does-not-exist)
+expect_contains("${IDL_OUTPUT}" "does-not-exist")
 
-# Fontes fora da convenção geram aviso, mas não impedem o build.
-file(WRITE "${WORK_DIR}/avisos/src/main.c" "int main(void) { return 0; }\n")
-file(WRITE "${WORK_DIR}/avisos/src/bin/sub/x.c" "int main(void) { return 0; }\n")
-idl("${WORK_DIR}/avisos" ARGS build)
-expect_contains("${IDL_OUTPUT}" "src/bin/sub/x.c ignorado")
+# Sources outside the convention produce a warning but do not stop the build.
+file(WRITE "${WORK_DIR}/warnings/src/main.c" "int main(void) { return 0; }\n")
+file(WRITE "${WORK_DIR}/warnings/src/bin/sub/x.c" "int main(void) { return 0; }\n")
+idl("${WORK_DIR}/warnings" ARGS build)
+expect_contains("${IDL_OUTPUT}" "src/bin/sub/x.c ignored")
 
-# requires-c desconhecido: aviso e build sem -std.
-file(WRITE "${WORK_DIR}/avisos/project.yml" "project:\n  name: avisos\n  requires-c: K&R\n")
-idl("${WORK_DIR}/avisos" ARGS build)
-expect_contains("${IDL_OUTPUT}" "requires-c 'K&R' não reconhecido")
+# Unknown requires-c: warning and build without -std.
+file(WRITE "${WORK_DIR}/warnings/project.yml" "project:\n  name: warnings\n  requires-c: K&R\n")
+idl("${WORK_DIR}/warnings" ARGS build)
+expect_contains("${IDL_OUTPUT}" "requires-c 'K&R' not recognized")

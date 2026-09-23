@@ -1,27 +1,27 @@
-# Dependências do sistema e seção build: do project.yml.
+# System dependencies and the build: section of project.yml.
 include("${CMAKE_CURRENT_LIST_DIR}/common.cmake")
 
 use_fixture(deps)
 
 idl("${PROJECT_DIR}" ARGS run)
-expect_contains("${IDL_OUTPUT}" "raiz=4.0 versao=7 extra=extra")
+expect_contains("${IDL_OUTPUT}" "sqrt=4.0 version=7 extra=extra")
 
 file(READ "${PROJECT_DIR}/build/debug/obj/src/main.c.cmd" compile_cmd)
 expect_contains("${compile_cmd}" "-std=c17")
-expect_contains("${compile_cmd}" "-DVERSAO=7")
+expect_contains("${compile_cmd}" "-DVERSION=7")
 expect_contains("${compile_cmd}" "-Ithird_party")
 expect_contains("${compile_cmd}" "-Wshadow")
 
 file(READ "${PROJECT_DIR}/build/debug/obj/.link/exe-deps.cmd" link_cmd)
 expect_contains("${link_cmd}" "-lm")
 
-# Dependência desconhecida: aviso e -l<nome>, que falha na linkagem.
-idl("${PROJECT_DIR}" ARGS add idl-lib-que-nao-existe)
+# Unknown dependency: warning and -l<name>, which fails at link time.
+idl("${PROJECT_DIR}" ARGS add idl-missing-lib)
 idl("${PROJECT_DIR}" EXPECT 1 ARGS build)
-expect_contains("${IDL_OUTPUT}" "Dependência 'idl-lib-que-nao-existe' não encontrada no pkg-config")
-expect_contains("${IDL_OUTPUT}" "Falha na linkagem")
+expect_contains("${IDL_OUTPUT}" "Dependency 'idl-missing-lib' not found by pkg-config")
+expect_contains("${IDL_OUTPUT}" "Linking failed")
 
-# zlib via pkg-config, se estiver instalada.
+# zlib through pkg-config, when installed.
 find_program(PKG_CONFIG pkg-config)
 if(PKG_CONFIG)
 	execute_process(COMMAND "${PKG_CONFIG}" --exists zlib RESULT_VARIABLE has_zlib)
@@ -32,7 +32,7 @@ if(PKG_CONFIG AND has_zlib EQUAL 0)
 	file(WRITE "${zdir}/project.yml" "project:\n  name: zlib_app\n  dependencies: [zlib]\n")
 	idl("${zdir}" ARGS run)
 	expect_contains("${IDL_OUTPUT}" "zlib 1.")
-	expect_not_contains("${IDL_OUTPUT}" "não encontrada no pkg-config")
+	expect_not_contains("${IDL_OUTPUT}" "not found by pkg-config")
 else()
-	message(STATUS "zlib/pkg-config ausente: parte do teste pulada")
+	message(STATUS "zlib/pkg-config missing: part of the test skipped")
 endif()
