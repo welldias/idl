@@ -131,8 +131,8 @@ static void test_classification(void) {
     CHECK_INT(layout.tests.count, 1);
     CHECK_STR(layout.tests.items[0].stem, "test_one");
 
-    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_C, true));
-    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_CXX, true));
+    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_C));
+    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_CXX));
 
     build_layout_clear(&layout);
 }
@@ -146,7 +146,7 @@ static void test_without_tests(void) {
     build_layout_t layout;
     CHECK(build_layout_load(&layout, false));
     CHECK_INT(layout.tests.count, 0);
-    CHECK(!build_layout_uses_lang(&layout, BUILD_LANG_CXX, false));
+    CHECK(!build_layout_uses_lang(&layout, BUILD_LANG_CXX));
     build_layout_clear(&layout);
 }
 
@@ -210,6 +210,111 @@ static void test_library_only(void) {
     build_layout_clear(&layout);
 }
 
+static void test_convention_targets(void) {
+    idl_test_enter_dir("conv_targets_exe");
+    write_full_project();
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, true));
+    CHECK(!layout.has_targets);
+    // Objects of src/, the main executable, one bin and one test.
+    CHECK_INT(layout.targets.count, 4);
+    build_target_t *objects = &layout.targets.items[0];
+    CHECK_INT(objects->type, BUILD_TARGET_OBJECTS);
+    CHECK_INT(objects->sources.count, 2);
+    CHECK(!objects->pic);
+    CHECK_STR(layout.targets.items[1].name, "conv_targets_exe");
+    CHECK_INT(layout.targets.items[1].exe_kind, BUILD_ARTIFACT_EXE);
+    CHECK_INT(layout.targets.items[2].exe_kind, BUILD_ARTIFACT_BIN);
+    CHECK_INT(layout.targets.items[3].exe_kind, BUILD_ARTIFACT_TEST);
+    for (word t = 1; t < 4; t++) {
+        CHECK_INT(layout.targets.items[t].dep_count, 1);
+        CHECK_INT(layout.targets.items[t].level, 1);
+    }
+    CHECK(idl_test_list_has(&objects->include_dirs, "src"));
+    CHECK(idl_test_list_has(&objects->include_dirs, "include"));
+    build_layout_clear(&layout);
+
+    idl_test_enter_dir("conv_targets_lib");
+    idl_test_write("src/calc.c", "");
+    idl_test_write("src/bin/conv_targets_lib.c", "");
+
+    CHECK(build_layout_load(&layout, false));
+    CHECK_INT(layout.targets.count, 2);
+    CHECK_INT(layout.targets.items[0].type, BUILD_TARGET_LIBRARY);
+    CHECK(layout.targets.items[0].pic);
+    CHECK(layout.targets.items[0].link_objects);
+    CHECK_INT(layout.targets.items[1].type, BUILD_TARGET_EXECUTABLE);
+    CHECK(!idl_test_list_has(&layout.targets.items[1].include_dirs, "include"));
+    build_layout_clear(&layout);
+}
+
+static void test_explicit_targets(void) {
+    idl_test_enter_dir("explicit");
+    idl_test_write("lib/a.c", "");
+    idl_test_write("lib/b.cpp", "");
+    idl_test_write("apps/main.c", "");
+    idl_test_write("src/main.c", ""); // ignored: the convention is not used
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit\n"
+        "targets:\n"
+        "  app:\n"
+        "    type: executable\n"
+        "    sources: [apps/*.c]\n"
+        "    link: [core]\n"
+        "  core:\n"
+        "    type: static-library\n"
+        "    sources: [lib/**]\n");
+
+    build_layout_t layout;
+    CHECK(build_layout_load(&layout, true));
+    CHECK(layout.has_targets);
+    CHECK_INT(layout.main.count, 0);
+    CHECK_INT(layout.targets.count, 2);
+    CHECK_STR(layout.targets.items[0].name, "app");
+    CHECK_STR(layout.targets.items[0].obj_dir, "exe/app/");
+    CHECK_STR(layout.targets.items[1].obj_dir, "lib/core/");
+    CHECK_INT(layout.targets.items[0].sources.count, 1);
+    CHECK_INT(layout.targets.items[0].level, 1);
+    CHECK_INT(layout.targets.items[1].sources.count, 2);
+    CHECK(build_layout_uses_lang(&layout, BUILD_LANG_CXX));
+    build_layout_clear(&layout);
+
+    // Without src/ the convention would fail; with targets it is not needed.
+    platform_remove_tree("src");
+    CHECK(build_layout_load(&layout, false));
+    build_layout_clear(&layout);
+
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit\n"
+        "targets:\n"
+        "  app:\n"
+        "    type: executable\n"
+        "    sources: [apps/*.c]\n"
+        "    link: [nothing]\n");
+    check_load_fails("bad_link");
+
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit\n"
+        "targets:\n"
+        "  app:\n"
+        "    type: executable\n"
+        "    sources: [apps/missing.c]\n");
+    check_load_fails("missing_source");
+
+    idl_test_write(PROJECT_FILE_NAME,
+        "project:\n"
+        "  name: explicit\n"
+        "targets:\n"
+        "  app:\n"
+        "    type: executable\n"
+        "    sources: [nowhere/*.c]\n");
+    check_load_fails("no_sources");
+}
+
 int main(void) {
     RUN_TEST(test_source_lang);
     RUN_TEST(test_source_for_os);
@@ -219,5 +324,7 @@ int main(void) {
     RUN_TEST(test_name_from_config);
     RUN_TEST(test_errors);
     RUN_TEST(test_library_only);
+    RUN_TEST(test_convention_targets);
+    RUN_TEST(test_explicit_targets);
     return idl_test_report();
 }

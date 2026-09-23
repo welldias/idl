@@ -24,6 +24,61 @@ static list_t *project_file_build_list(project_config_t *config, word index) {
     return (list_t *)((byte *)&config->build + project_file_build_lists[index].offset);
 }
 
+static const struct {
+    const char *key;
+    size_t offset;
+} project_file_target_lists[] = {
+    { "sources", offsetof(project_target_config_t, sources) },
+    { "exclude", offsetof(project_target_config_t, exclude) },
+    { "include-dirs", offsetof(project_target_config_t, include_dirs) },
+    { "public-include-dirs", offsetof(project_target_config_t, public_include_dirs) },
+    { "defines", offsetof(project_target_config_t, defines) },
+    { "cflags", offsetof(project_target_config_t, cflags) },
+    { "cxxflags", offsetof(project_target_config_t, cxxflags) },
+    { "ldflags", offsetof(project_target_config_t, ldflags) },
+    { "libs", offsetof(project_target_config_t, libs) },
+    { "link", offsetof(project_target_config_t, link) },
+};
+
+static list_t *project_file_target_list(project_target_config_t *target, word index) {
+    return (list_t *)((byte *)target + project_file_target_lists[index].offset);
+}
+
+static const char *project_target_type_names[] = {
+    [PROJECT_TARGET_EXECUTABLE] = "executable",
+    [PROJECT_TARGET_STATIC_LIBRARY] = "static-library",
+    [PROJECT_TARGET_SHARED_LIBRARY] = "shared-library",
+    [PROJECT_TARGET_LIBRARY] = "library",
+};
+
+const char *project_target_type_name(project_target_type_t type) {
+    return (word)type < SIZE_OF_ARRAY(project_target_type_names) ? project_target_type_names[type] : "?";
+}
+
+static project_target_config_t *project_target_create(const char *name, word name_len) {
+    project_target_config_t *target = (project_target_config_t *)calloc(1, sizeof(project_target_config_t));
+    if (!target) {
+        LOG_FATAL_NOT_ENOUGH_MEMORY();
+        return nullptr;
+    }
+
+    target->name = strutils_strndup(name, (int)name_len);
+    for (word i = 0; i < SIZE_OF_ARRAY(project_file_target_lists); i++)
+        list_init(project_file_target_list(target, i), free);
+    return target;
+}
+
+static void project_target_destroy(void *item) {
+    project_target_config_t *target = (project_target_config_t *)item;
+    if (!target)
+        return;
+
+    for (word i = 0; i < SIZE_OF_ARRAY(project_file_target_lists); i++)
+        list_clear(project_file_target_list(target, i));
+    free(target->name);
+    free(target);
+}
+
 void project_file_config_init(project_config_t *config) {
     RETURN_IF_FAIL(config);
     memset(config, 0, sizeof(project_config_t));
@@ -31,6 +86,7 @@ void project_file_config_init(project_config_t *config) {
     list_init(&config->dependencies, free);
     for (word i = 0; i < SIZE_OF_ARRAY(project_file_build_lists); i++)
         list_init(project_file_build_list(config, i), free);
+    list_init(&config->targets, project_target_destroy);
 }
 
 void project_file_config_clean(project_config_t *config) {
@@ -39,6 +95,7 @@ void project_file_config_clean(project_config_t *config) {
     list_clear(&config->dependencies);
     for (word i = 0; i < SIZE_OF_ARRAY(project_file_build_lists); i++)
         list_clear(project_file_build_list(config, i));
+    list_clear(&config->targets);
     free(config->name);
     free(config->version);
     free(config->description);
@@ -157,6 +214,26 @@ bool project_file_save(project_config_t *config) {
         built = built && project_file_yaml_pair_add(&doc, build, project_file_build_lists[i].key, project_file_yaml_sequence_add(&doc, list));
     }
 
+    int targets = 0;
+    for (list_item_t *item = config->targets.head; built && item; item = item->next) {
+        project_target_config_t *target = (project_target_config_t *)item->value;
+
+        if (!targets) {
+            targets = yaml_document_add_mapping(&doc, NULL, YAML_BLOCK_MAPPING_STYLE);
+            built = targets && project_file_yaml_pair_add(&doc, root, "targets", targets);
+        }
+
+        int mapping = yaml_document_add_mapping(&doc, NULL, YAML_BLOCK_MAPPING_STYLE);
+        built = built && mapping && project_file_yaml_pair_add(&doc, targets, target->name, mapping) &&
+                project_file_yaml_pair_add(&doc, mapping, "type", project_file_yaml_scalar_add(&doc, project_target_type_name(target->type)));
+
+        for (word i = 0; built && i < SIZE_OF_ARRAY(project_file_target_lists); i++) {
+            list_t *list = project_file_target_list(target, i);
+            if (list->count)
+                built = project_file_yaml_pair_add(&doc, mapping, project_file_target_lists[i].key, project_file_yaml_sequence_add(&doc, list));
+        }
+    }
+
     if (!built) {
         log_error("Failed to build the YAML document.");
         yaml_document_delete(&doc);
@@ -190,6 +267,106 @@ bool project_file_save(project_config_t *config) {
     }
 
     log_debug("File %s saved successfully.", PROJECT_FILE_NAME);
+    return true;
+}
+
+static bool project_file_target_read(yaml_document_t *doc, yaml_node_t *key, yaml_node_t *node, project_config_t *config) {
+    const char *name = (const char *)key->data.scalar.value;
+    word line = key->start_mark.line + 1;
+
+    if (key->data.scalar.length == 0 || strpbrk(name, "/\\ \t")) {
+        log_error("%s:%zu: invalid target name '%s' (it becomes a file name: no spaces or slashes).", PROJECT_FILE_NAME, line, name);
+        return false;
+    }
+
+    if (!node || node->type != YAML_MAPPING_NODE) {
+        log_error("%s:%zu: target '%s' must be a section with keys (type, sources...).", PROJECT_FILE_NAME, line, name);
+        return false;
+    }
+
+    // Unknown keys are usually typos ("source:" instead of "sources:").
+    for (yaml_node_pair_t *pair = node->data.mapping.pairs.start; pair < node->data.mapping.pairs.top; pair++) {
+        yaml_node_t *pair_key = yaml_document_get_node(doc, pair->key);
+        const char *key_name = pair_key && pair_key->type == YAML_SCALAR_NODE ? (const char *)pair_key->data.scalar.value : "";
+
+        bool known = strcmp(key_name, "type") == 0;
+        for (word i = 0; !known && i < SIZE_OF_ARRAY(project_file_target_lists); i++)
+            known = strcmp(key_name, project_file_target_lists[i].key) == 0;
+        if (!known) {
+            log_error("%s:%zu: unknown key '%s' in target '%s'.", PROJECT_FILE_NAME, pair_key ? pair_key->start_mark.line + 1 : line, key_name, name);
+            return false;
+        }
+    }
+
+    project_target_config_t *target = project_target_create(name, key->data.scalar.length);
+    if (!target || !list_add(&config->targets, target)) {
+        project_target_destroy(target);
+        return false;
+    }
+
+    char *type = nullptr;
+    if (!project_file_yaml_string_get(doc, node, "type", &type))
+        return false;
+
+    bool type_found = false;
+    for (word i = 0; type && i < SIZE_OF_ARRAY(project_target_type_names); i++) {
+        if (strcmp(type, project_target_type_names[i]) == 0) {
+            target->type = (project_target_type_t)i;
+            type_found = true;
+        }
+    }
+    if (!type_found) {
+        if (type)
+            log_error("%s:%zu: target '%s' has an unknown type '%s' (use executable, static-library, shared-library or library).", PROJECT_FILE_NAME, line, name, type);
+        else
+            log_error("%s:%zu: target '%s' has no type (executable, static-library, shared-library or library).", PROJECT_FILE_NAME, line, name);
+        free(type);
+        return false;
+    }
+    free(type);
+
+    // An executable and a library can share a name (lua and liblua.a), two of the same kind cannot.
+    bool executable = target->type == PROJECT_TARGET_EXECUTABLE;
+    for (list_item_t *item = config->targets.head; item && item->value != target; item = item->next) {
+        project_target_config_t *other = (project_target_config_t *)item->value;
+        if (strcmp(other->name, name) == 0 && (other->type == PROJECT_TARGET_EXECUTABLE) == executable) {
+            log_error("%s:%zu: %s '%s' is declared twice (an executable and a library may share a name, two %s may not).",
+                      PROJECT_FILE_NAME, line, executable ? "executable" : "library", name, executable ? "executables" : "libraries");
+            return false;
+        }
+    }
+
+    for (word i = 0; i < SIZE_OF_ARRAY(project_file_target_lists); i++) {
+        if (!project_file_yaml_list_get(doc, node, project_file_target_lists[i].key, project_file_target_list(target, i)))
+            return false;
+    }
+
+    if (target->sources.count == 0) {
+        log_error("%s:%zu: target '%s' has no sources.", PROJECT_FILE_NAME, line, name);
+        return false;
+    }
+    return true;
+}
+
+static bool project_file_targets_read(yaml_document_t *doc, project_config_t *config) {
+    yaml_node_t *targets = project_file_yaml_get(doc, yaml_document_get_root_node(doc), "targets");
+    if (!targets)
+        return true;
+
+    if (targets->type != YAML_MAPPING_NODE || targets->data.mapping.pairs.start == targets->data.mapping.pairs.top) {
+        log_error("%s:%zu: 'targets' must be a section with at least one target.", PROJECT_FILE_NAME, targets->start_mark.line + 1);
+        return false;
+    }
+
+    for (yaml_node_pair_t *pair = targets->data.mapping.pairs.start; pair < targets->data.mapping.pairs.top; pair++) {
+        yaml_node_t *key = yaml_document_get_node(doc, pair->key);
+        if (!key || key->type != YAML_SCALAR_NODE) {
+            log_error("%s:%zu: target names must be scalar values.", PROJECT_FILE_NAME, targets->start_mark.line + 1);
+            return false;
+        }
+        if (!project_file_target_read(doc, key, yaml_document_get_node(doc, pair->value), config))
+            return false;
+    }
     return true;
 }
 
@@ -243,6 +420,9 @@ bool project_file_read(project_config_t *config) {
         if (!project_file_yaml_list_get(&doc, build, project_file_build_lists[i].key, project_file_build_list(config, i)))
             goto cleanup;
     }
+
+    if (!project_file_targets_read(&doc, config))
+        goto cleanup;
 
     result = true;
 

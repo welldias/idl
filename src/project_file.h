@@ -19,6 +19,29 @@ typedef struct {
     list_t libs;          // -l<lib>, without going through pkg-config
 } project_build_config_t;
 
+typedef enum {
+    PROJECT_TARGET_EXECUTABLE,
+    PROJECT_TARGET_STATIC_LIBRARY,
+    PROJECT_TARGET_SHARED_LIBRARY,
+    PROJECT_TARGET_LIBRARY,          // static and shared, from the same objects
+} project_target_type_t;
+
+/* An item of the "targets:" section: what to compile and how. All lists hold strings. */
+typedef struct {
+    char *name;                   // key of the item in "targets:"
+    project_target_type_t type;
+    list_t sources;               // files and globs (*, ?, **)
+    list_t exclude;               // globs removed from sources
+    list_t include_dirs;          // -I<dir> for this target only
+    list_t public_include_dirs;   // -I<dir> for this target and the targets that link it
+    list_t defines;
+    list_t cflags;
+    list_t cxxflags;
+    list_t ldflags;
+    list_t libs;                  // -l<lib>
+    list_t link;                  // names of other targets
+} project_target_config_t;
+
 typedef struct {
     char *name;
     char *version;
@@ -27,7 +50,10 @@ typedef struct {
     char *requires_cpp;
     list_t dependencies;  // system libraries (pkg-config or -l)
     project_build_config_t build;
+    list_t targets;       // project_target_config_t *; empty: the directory convention is used
 } project_config_t;
+
+const char *project_target_type_name(project_target_type_t type);
 
 void project_file_config_init(project_config_t *config);
 void project_file_config_clean(project_config_t *config);

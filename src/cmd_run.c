@@ -27,31 +27,35 @@ int handle_param_run(int argc, char *argv[]) {
     if (!build_enter_project_dir(cmd_args_get_value(&args, "project")) || !build_plan_run(&plan, &options))
         goto cleanup;
 
+    // With several executables, the one named after the project is the default.
     build_artifact_t *artifact = nullptr;
-    if (bin_name) {
-        artifact = build_plan_find_artifact(&plan, BUILD_ARTIFACT_BIN, bin_name);
-        if (!artifact)
-            artifact = build_plan_find_artifact(&plan, BUILD_ARTIFACT_EXE, bin_name);
-    } else {
-        artifact = build_plan_find_artifact(&plan, BUILD_ARTIFACT_EXE, nullptr);
+    build_artifact_t *named = nullptr;
+    word executables = 0;
+    for (word i = 0; i < plan.artifact_count; i++) {
+        build_artifact_t *candidate = &plan.artifacts[i];
+        if (candidate->kind != BUILD_ARTIFACT_EXE && candidate->kind != BUILD_ARTIFACT_BIN)
+            continue;
+
+        executables++;
+        if (!artifact && (!bin_name || strcmp(candidate->name, bin_name) == 0))
+            artifact = candidate;
+        if (strcmp(candidate->name, plan.layout.name) == 0)
+            named = candidate;
+    }
+
+    if (!bin_name && executables > 1) {
+        artifact = named;
         if (!artifact) {
-            word bins = 0;
-            for (word i = 0; i < plan.artifact_count; i++) {
-                if (plan.artifacts[i].kind == BUILD_ARTIFACT_BIN) {
-                    artifact = &plan.artifacts[i];
-                    bins++;
-                }
-            }
-            if (bins > 1) {
-                log_error("There are several executables in src/bin/; choose one with --bin <name>.");
-                goto cleanup;
-            }
+            log_error("There are several executables; choose one with --bin <name>.");
+            goto cleanup;
         }
     }
 
     if (!artifact) {
         if (bin_name)
             log_error("Executable '%s' not found.", bin_name);
+        else if (plan.layout.has_targets)
+            log_error("The project has no executable (declare a target with type: executable in %s).", PROJECT_FILE_NAME);
         else
             log_error("The project has no executable (create src/main.c or files in src/bin/).");
         goto cleanup;

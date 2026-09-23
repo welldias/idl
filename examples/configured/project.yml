@@ -1,0 +1,37 @@
+project:
+  name: configured
+  version: 0.1.0
+  requires-c: C17
+  requires-cpp: C++17
+
+# Settings for every target.
+build:
+  cflags: [-Wshadow]
+
+targets:
+  # A small third-party library kept in its own directory.
+  textutil:
+    type: static-library
+    sources: [third_party/textutil/*.c]
+    public-include-dirs: [third_party/textutil]
+
+  # The main library: static (libgeometry.a) and shared (libgeometry.so).
+  geometry:
+    type: library
+    sources: [engine/src/**/*.c]
+    exclude: [engine/src/experimental/**]
+    include-dirs: [engine/src]                # private headers (internal/...)
+    public-include-dirs: [engine/include]     # <geometry/geometry.h>, also for whoever links it
+    libs: [m]                                 # sqrt(); passed on to whoever links the static library
+    link: [textutil]
+
+  # Two programs that use the library.
+  measure:
+    type: executable
+    sources: [apps/measure/*.c]
+    link: [geometry]
+
+  report:
+    type: executable
+    sources: [apps/report.cpp]
+    link: [geometry]

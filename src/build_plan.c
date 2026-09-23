@@ -22,10 +22,11 @@
 #endif
 
 struct build_unit_t {
+    word target;
     build_source_t *source;
-    char *obj;      // build/<profile>/obj/<source>.o
-    char *dep;      // build/<profile>/obj/<source>.d   (written by the compiler with -MMD)
-    char *stamp;    // build/<profile>/obj/<source>.cmd (command used in the last compilation)
+    char *obj;      // build/<profile>/obj/[<target>/]<source>.o
+    char *dep;      // build/<profile>/obj/[<target>/]<source>.d   (written by the compiler with -MMD)
+    char *stamp;    // build/<profile>/obj/[<target>/]<source>.cmd (command used in the last compilation)
     compiler_command_t cmd;
     bool dirty;
 };
@@ -194,10 +195,11 @@ static char *build_std_flag(const char *value, const char *key) {
     return flag;
 }
 
-/* pic: the object also goes into the shared library, so it needs -fPIC. */
-static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit, bool pic) {
+static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit, word *closure) {
     compiler_command_t *cmd = &unit->cmd;
     project_config_t *config = &plan->layout.config;
+    build_targets_t *targets = &plan->layout.targets;
+    build_target_t *target = &targets->items[unit->target];
     bool cxx = unit->source->lang == BUILD_LANG_CXX;
 
     compiler_command_init(cmd, 32);
@@ -217,16 +219,23 @@ static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit, bool 
     }
     build_arg(cmd, "-Wall");
     build_arg(cmd, "-Wextra");
-    if (pic && BUILD_SHARED_NEEDS_PIC)
+    if (target->pic && BUILD_SHARED_NEEDS_PIC)
         build_arg(cmd, "-fPIC");
 
-    build_arg(cmd, "-I" BUILD_SRC_DIR);
-    if (plan->layout.has_include_dir)
-        build_arg(cmd, "-I" BUILD_INCLUDE_DIR);
+    // Include path: the target's own directories, then the public ones of what it links, then the global ones.
+    build_arg_list(plan, cmd, &target->include_dirs, "-I");
+    build_arg_list(plan, cmd, &target->public_include_dirs, "-I");
+    word count = build_target_closure(targets, unit->target, false, closure);
+    for (word i = 0; i < count; i++)
+        build_arg_list(plan, cmd, &targets->items[closure[i]].public_include_dirs, "-I");
     build_arg_list(plan, cmd, &config->build.include_dirs, "-I");
+
+    // Global settings first, so the target's own can override them.
     build_arg_list(plan, cmd, &config->build.defines, "-D");
+    build_arg_list(plan, cmd, &target->defines, "-D");
     build_arg_list(plan, cmd, &plan->toolchain.cflags, nullptr);
     build_arg_list(plan, cmd, cxx ? &config->build.cxxflags : &config->build.cflags, nullptr);
+    build_arg_list(plan, cmd, cxx ? &target->cxxflags : &target->cflags, nullptr);
 
     build_arg(cmd, "-MMD");
     build_arg(cmd, "-MP");
@@ -239,102 +248,96 @@ static void build_plan_compile_cmd(build_plan_t *plan, build_unit_t *unit, bool 
 }
 
 static bool build_plan_create_units(build_plan_t *plan) {
-    build_layout_t *layout = &plan->layout;
-    build_sources_t *groups[] = { &layout->main, &layout->lib, &layout->bins, &layout->tests };
-    word group_count = plan->options.with_tests ? 4 : 3;
+    build_targets_t *targets = &plan->layout.targets;
 
     word total = 0;
-    for (word g = 0; g < group_count; g++)
-        total += groups[g]->count;
+    for (word t = 0; t < targets->count; t++)
+        total += targets->items[t].sources.count;
 
     plan->units = (build_unit_t *)calloc(total ? total : 1, sizeof(build_unit_t));
-    if (!plan->units) {
+    word *closure = (word *)calloc(targets->count ? targets->count : 1, sizeof(word));
+    if (!plan->units || !closure) {
         LOG_FATAL_NOT_ENOUGH_MEMORY();
+        free(closure);
         return false;
     }
 
-    // A project without main is a library: its sources (group 1) also build the shared library.
-    bool library = layout->main.count == 0;
+    for (word t = 0; t < targets->count; t++) {
+        build_target_t *target = &targets->items[t];
+        target->first_unit = plan->unit_count;
 
-    for (word g = 0; g < group_count; g++) {
-        for (word i = 0; i < groups[g]->count; i++) {
+        for (word i = 0; i < target->sources.count; i++) {
             build_unit_t *unit = &plan->units[plan->unit_count++];
-            unit->source = &groups[g]->items[i];
-            unit->obj = strutils_format("%s/obj/%s.o", plan->out_dir, unit->source->path);
-            unit->dep = strutils_format("%s/obj/%s.d", plan->out_dir, unit->source->path);
-            unit->stamp = strutils_format("%s/obj/%s.cmd", plan->out_dir, unit->source->path);
-            build_plan_compile_cmd(plan, unit, library && groups[g] == &layout->lib);
+            unit->target = t;
+            unit->source = &target->sources.items[i];
+            unit->obj = strutils_format("%s/obj/%s%s.o", plan->out_dir, target->obj_dir, unit->source->path);
+            unit->dep = strutils_format("%s/obj/%s%s.d", plan->out_dir, target->obj_dir, unit->source->path);
+            unit->stamp = strutils_format("%s/obj/%s%s.cmd", plan->out_dir, target->obj_dir, unit->source->path);
+            build_plan_compile_cmd(plan, unit, closure);
         }
     }
+
+    free(closure);
     return true;
 }
 
-/* Unit indexes: [main][lib...][bins...][tests...] */
-static word build_plan_lib_first(build_plan_t *plan) {
-    return plan->layout.main.count;
+static char *build_plan_artifact_path(build_plan_t *plan, build_target_t *target, build_artifact_kind_t kind) {
+    switch (kind) {
+        case BUILD_ARTIFACT_LIB:
+            return strutils_format("%s/lib%s.a", plan->out_dir, target->name);
+        case BUILD_ARTIFACT_SHARED:
+            return strutils_format("%s/%s%s%s", plan->out_dir, BUILD_SHARED_PREFIX, target->name, BUILD_SHARED_EXTENSION);
+        case BUILD_ARTIFACT_TEST:
+            return strutils_format("%s/tests/%s%s", plan->out_dir, target->name, EXE_EXTENSION);
+        default:
+            return strutils_format("%s/%s%s", plan->out_dir, target->name, EXE_EXTENSION);
+    }
 }
 
-static word build_plan_bins_first(build_plan_t *plan) {
-    return plan->layout.main.count + plan->layout.lib.count;
-}
-
-static word build_plan_tests_first(build_plan_t *plan) {
-    return build_plan_bins_first(plan) + plan->layout.bins.count;
-}
-
-/* Each artifact uses every source of the internal library (src/ without main and bin/)
-   plus, optionally, its own source (main, bin or test). */
 typedef struct {
     build_artifact_t artifact;
-    bool has_unit;
-    word unit;
+    word target;
 } build_artifact_entry_t;
 
-static void build_plan_add_artifact(build_plan_t *plan, build_artifact_entry_t *entries, build_artifact_kind_t kind,
-                                    const char *name, char *path, bool has_unit, word unit) {
+static void build_plan_add_artifact(build_plan_t *plan, build_artifact_entry_t *entries, word target, build_artifact_kind_t kind) {
+    build_target_t *source = &plan->layout.targets.items[target];
     build_artifact_entry_t *entry = &entries[plan->artifact_count++];
     entry->artifact.kind = kind;
-    entry->artifact.name = strutils_strndup(name, strlen(name));
-    entry->artifact.path = path;
-    entry->has_unit = has_unit;
-    entry->unit = unit;
+    entry->artifact.name = strutils_strndup(source->name, strlen(source->name));
+    entry->artifact.path = build_plan_artifact_path(plan, source, kind);
+    entry->target = target;
 }
 
 static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries, word *linked);
 
 static bool build_plan_link_artifacts(build_plan_t *plan, word *linked) {
-    build_layout_t *layout = &plan->layout;
-    word max = 2 + layout->bins.count + layout->tests.count;
+    build_targets_t *targets = &plan->layout.targets;
 
-    build_artifact_entry_t *entries = (build_artifact_entry_t *)calloc(max, sizeof(build_artifact_entry_t));
+    build_artifact_entry_t *entries = (build_artifact_entry_t *)calloc(targets->count ? targets->count * 2 : 1, sizeof(build_artifact_entry_t));
     if (!entries) {
         LOG_FATAL_NOT_ENOUGH_MEMORY();
         return false;
     }
 
-    if (layout->main.count) {
-        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_EXE, layout->name,
-                                strutils_format("%s/%s%s", plan->out_dir, layout->name, EXE_EXTENSION), true, 0);
-    } else if (layout->lib.count) {
-        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_LIB, layout->name,
-                                strutils_format("%s/lib%s.a", plan->out_dir, layout->name), false, 0);
-        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_SHARED, layout->name,
-                                strutils_format("%s/%s%s%s", plan->out_dir, BUILD_SHARED_PREFIX, layout->name, BUILD_SHARED_EXTENSION),
-                                false, 0);
-    }
-
-    for (word i = 0; i < layout->bins.count; i++) {
-        const char *stem = layout->bins.items[i].stem;
-        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_BIN, stem,
-                                strutils_format("%s/%s%s", plan->out_dir, stem, EXE_EXTENSION),
-                                true, build_plan_bins_first(plan) + i);
-    }
-
-    for (word i = 0; plan->options.with_tests && i < layout->tests.count; i++) {
-        const char *stem = layout->tests.items[i].stem;
-        build_plan_add_artifact(plan, entries, BUILD_ARTIFACT_TEST, stem,
-                                strutils_format("%s/tests/%s%s", plan->out_dir, stem, EXE_EXTENSION),
-                                true, build_plan_tests_first(plan) + i);
+    for (word t = 0; t < targets->count; t++) {
+        build_target_t *target = &targets->items[t];
+        switch (target->type) {
+            case BUILD_TARGET_OBJECTS:
+                break;
+            case BUILD_TARGET_EXECUTABLE:
+                build_plan_add_artifact(plan, entries, t, target->exe_kind);
+                break;
+            case BUILD_TARGET_STATIC_LIBRARY:
+                build_plan_add_artifact(plan, entries, t, BUILD_ARTIFACT_LIB);
+                break;
+            case BUILD_TARGET_SHARED_LIBRARY:
+                build_plan_add_artifact(plan, entries, t, BUILD_ARTIFACT_SHARED);
+                break;
+            case BUILD_TARGET_LIBRARY:
+                build_plan_add_artifact(plan, entries, t, BUILD_ARTIFACT_LIB);
+                build_plan_add_artifact(plan, entries, t, BUILD_ARTIFACT_SHARED);
+                break;
+        }
     }
 
     bool result = build_plan_link(plan, entries, linked);
@@ -349,26 +352,46 @@ static bool build_plan_link_artifacts(build_plan_t *plan, word *linked) {
     return result && plan->artifacts;
 }
 
-static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entry, compiler_command_t *cmd) {
-    project_config_t *config = &plan->layout.config;
-    word lib_first = build_plan_lib_first(plan);
-    word lib_count = plan->layout.lib.count;
+static bool build_target_has_cxx(build_target_t *target) {
+    for (word i = 0; i < target->sources.count; i++) {
+        if (target->sources.items[i].lang == BUILD_LANG_CXX)
+            return true;
+    }
+    return false;
+}
 
-    compiler_command_init(cmd, 16 + lib_count);
+/* Adds the objects of a target to the command and to the inputs of the artifact. */
+static void build_plan_link_objects(build_plan_t *plan, build_target_t *target, compiler_command_t *cmd, list_t *inputs) {
+    for (word i = 0; i < target->sources.count; i++) {
+        const char *obj = plan->units[target->first_unit + i].obj;
+        build_arg(cmd, obj);
+        list_add(inputs, (void *)obj);
+    }
+}
+
+static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entry, compiler_command_t *cmd, list_t *inputs, word *closure) {
+    project_config_t *config = &plan->layout.config;
+    build_targets_t *targets = &plan->layout.targets;
+    build_target_t *target = &targets->items[entry->target];
+
+    compiler_command_init(cmd, 16 + target->sources.count);
 
     if (entry->artifact.kind == BUILD_ARTIFACT_LIB) {
         build_arg(cmd, plan->toolchain.ar);
         build_arg(cmd, "rcs");
         build_arg(cmd, entry->artifact.path);
-        for (word i = 0; i < lib_count; i++)
-            build_arg(cmd, plan->units[lib_first + i].obj);
+        build_plan_link_objects(plan, target, cmd, inputs);
         return;
     }
 
-    // Link with the C++ compiler if any of the sources is C++.
-    bool cxx = entry->has_unit && plan->units[entry->unit].source->lang == BUILD_LANG_CXX;
-    for (word i = 0; i < lib_count; i++)
-        cxx = cxx || plan->units[lib_first + i].source->lang == BUILD_LANG_CXX;
+    word count = build_target_closure(targets, entry->target, true, closure);
+
+    // Link with the C++ compiler if any of the linked sources is C++.
+    bool cxx = build_target_has_cxx(target);
+    for (word i = 0; i < count; i++) {
+        build_target_t *dep = &targets->items[closure[i]];
+        cxx = cxx || (dep->type != BUILD_TARGET_SHARED_LIBRARY && build_target_has_cxx(dep));
+    }
 
     build_arg(cmd, cxx ? plan->toolchain.cxx : plan->toolchain.cc);
     if (entry->artifact.kind == BUILD_ARTIFACT_SHARED) {
@@ -384,78 +407,138 @@ static void build_plan_link_cmd(build_plan_t *plan, build_artifact_entry_t *entr
         build_arg(cmd, build_own(plan, strutils_format("-Wl,-soname,%s", file_name)));
 #endif
     }
-    if (entry->has_unit)
-        build_arg(cmd, plan->units[entry->unit].obj);
-    for (word i = 0; i < lib_count; i++)
-        build_arg(cmd, plan->units[lib_first + i].obj);
+
+    build_plan_link_objects(plan, target, cmd, inputs);
+
+    bool uses_shared = false;
+    for (word i = 0; i < count; i++) {
+        build_target_t *dep = &targets->items[closure[i]];
+        if (dep->type == BUILD_TARGET_OBJECTS || dep->link_objects) {
+            build_plan_link_objects(plan, dep, cmd, inputs);
+            continue;
+        }
+
+        uses_shared = uses_shared || dep->type == BUILD_TARGET_SHARED_LIBRARY;
+        build_artifact_kind_t kind = dep->type == BUILD_TARGET_SHARED_LIBRARY ? BUILD_ARTIFACT_SHARED : BUILD_ARTIFACT_LIB;
+        const char *path = build_own(plan, build_plan_artifact_path(plan, dep, kind));
+        build_arg(cmd, path);
+        list_add(inputs, (void *)path);
+    }
+
     build_arg(cmd, "-o");
     build_arg(cmd, entry->artifact.path);
+
+    // Shared libraries of the project are found next to what uses them.
+    if (uses_shared) {
+#if defined(__APPLE__)
+        build_arg(cmd, "-Wl,-rpath,@loader_path");
+#elif !defined(_WIN32)
+        build_arg(cmd, "-Wl,-rpath,$ORIGIN");
+#endif
+    }
+
     build_arg_list(plan, cmd, &config->build.ldflags, nullptr);
+    build_arg_list(plan, cmd, &target->ldflags, nullptr);
     build_arg_list(plan, cmd, &plan->toolchain.ldflags, nullptr);
+    build_arg_list(plan, cmd, &target->libs, "-l");
+    // A static library cannot carry the system libraries it needs: whoever links it does.
+    for (word i = 0; i < count; i++) {
+        build_target_t *dep = &targets->items[closure[i]];
+        if (dep->type != BUILD_TARGET_SHARED_LIBRARY)
+            build_arg_list(plan, cmd, &dep->libs, "-l");
+    }
     build_arg_list(plan, cmd, &config->build.libs, "-l");
 }
 
+static bool build_plan_link_dirty(const char *path, const char *stamp, compiler_command_t *cmd, list_t *inputs) {
+    int64 out_mtime = platform_file_mtime(path);
+    if (out_mtime < 0 || !build_stamp_matches(stamp, cmd))
+        return true;
+
+    for (list_item_t *item = inputs->head; item; item = item->next) {
+        if (platform_file_mtime((const char *)item->value) > out_mtime)
+            return true;
+    }
+    return false;
+}
+
+/* Links in waves by target level: a library is ready before whatever links it. */
 static bool build_plan_link(build_plan_t *plan, build_artifact_entry_t *entries, word *linked) {
+    build_targets_t *targets = &plan->layout.targets;
     word count = plan->artifact_count;
     compiler_command_t *cmds = (compiler_command_t *)calloc(count ? count : 1, sizeof(compiler_command_t));
+    list_t *inputs = (list_t *)calloc(count ? count : 1, sizeof(list_t));
     process_job_t *jobs = (process_job_t *)calloc(count ? count : 1, sizeof(process_job_t));
     char **stamps = (char **)calloc(count ? count : 1, sizeof(char *));
     word *job_entry = (word *)calloc(count ? count : 1, sizeof(word));
-    if (!cmds || !jobs || !stamps || !job_entry) {
+    word *closure = (word *)calloc(targets->count ? targets->count : 1, sizeof(word));
+    if (!cmds || !inputs || !jobs || !stamps || !job_entry || !closure) {
         LOG_FATAL_NOT_ENOUGH_MEMORY();
         free(cmds);
+        free(inputs);
         free(jobs);
         free(stamps);
         free(job_entry);
+        free(closure);
         return false;
     }
 
     static const char *kind_names[] = { "exe", "bin", "lib", "test", "shared" };
-    word lib_first = build_plan_lib_first(plan);
-    word job_count = 0;
+    word max_level = 0;
 
     for (word i = 0; i < count; i++) {
         build_artifact_entry_t *entry = &entries[i];
-        build_plan_link_cmd(plan, entry, &cmds[i]);
+        list_init(&inputs[i], nullptr);
+        build_plan_link_cmd(plan, entry, &cmds[i], &inputs[i], closure);
         stamps[i] = strutils_format("%s/obj/.link/%s-%s.cmd", plan->out_dir, kind_names[entry->artifact.kind], entry->artifact.name);
-
-        int64 out_mtime = platform_file_mtime(entry->artifact.path);
-        bool dirty = out_mtime < 0 || !build_stamp_matches(stamps[i], &cmds[i]);
-        for (word u = 0; !dirty && u < plan->layout.lib.count; u++)
-            dirty = platform_file_mtime(plan->units[lib_first + u].obj) > out_mtime;
-        if (!dirty && entry->has_unit)
-            dirty = platform_file_mtime(plan->units[entry->unit].obj) > out_mtime;
-
-        if (!dirty)
-            continue;
-
-        build_make_parent_dirs(entry->artifact.path);
-        build_make_parent_dirs(stamps[i]);
-        if (entry->artifact.kind == BUILD_ARTIFACT_LIB)
-            platform_remove_tree(entry->artifact.path); // ar rcs would keep stale members
-
-        const char *verb = entry->artifact.kind == BUILD_ARTIFACT_LIB ? "Archiving" : "Linking";
-        jobs[job_count].label = build_own(plan, strutils_format("  %s %s", verb, entry->artifact.path));
-        jobs[job_count].cmd = &cmds[i];
-        job_entry[job_count++] = i;
+        if (targets->items[entry->target].level > max_level)
+            max_level = targets->items[entry->target].level;
     }
 
-    bool result = process_runner_run(jobs, job_count, 0);
+    bool result = true;
+    *linked = 0;
 
-    for (word j = 0; j < job_count; j++) {
-        if (jobs[j].exit_status == 0)
-            build_stamp_write(stamps[job_entry[j]], &cmds[job_entry[j]]);
+    for (word level = 0; result && level <= max_level; level++) {
+        word job_count = 0;
+        memset(jobs, 0, count * sizeof(process_job_t));
+
+        for (word i = 0; i < count; i++) {
+            build_artifact_entry_t *entry = &entries[i];
+            if (targets->items[entry->target].level != level ||
+                !build_plan_link_dirty(entry->artifact.path, stamps[i], &cmds[i], &inputs[i]))
+                continue;
+
+            build_make_parent_dirs(entry->artifact.path);
+            build_make_parent_dirs(stamps[i]);
+            if (entry->artifact.kind == BUILD_ARTIFACT_LIB)
+                platform_remove_tree(entry->artifact.path); // ar rcs would keep stale members
+
+            const char *verb = entry->artifact.kind == BUILD_ARTIFACT_LIB ? "Archiving" : "Linking";
+            jobs[job_count].label = build_own(plan, strutils_format("  %s %s", verb, entry->artifact.path));
+            jobs[job_count].cmd = &cmds[i];
+            job_entry[job_count++] = i;
+        }
+
+        result = process_runner_run(jobs, job_count, 0);
+
+        for (word j = 0; j < job_count; j++) {
+            if (jobs[j].exit_status == 0)
+                build_stamp_write(stamps[job_entry[j]], &cmds[job_entry[j]]);
+        }
+        *linked += job_count;
     }
-    *linked = job_count;
 
     for (word i = 0; i < count; i++) {
         compiler_command_clear(&cmds[i]);
+        list_clear(&inputs[i]);
         free(stamps[i]);
     }
     free(cmds);
+    free(inputs);
     free(jobs);
     free(stamps);
     free(job_entry);
+    free(closure);
     return result;
 }
 
@@ -481,7 +564,10 @@ static bool build_plan_compile(build_plan_t *plan, word *compiled) {
             continue;
 
         build_make_parent_dirs(unit->obj);
-        jobs[job_count].label = build_own(plan, strutils_format("  Compiling %s", unit->source->path));
+        // In project.yml a source can be in several targets: the message names the target.
+        jobs[job_count].label = plan->layout.has_targets
+                                    ? build_own(plan, strutils_format("  Compiling %s (%s)", unit->source->path, plan->layout.targets.items[unit->target].name))
+                                    : build_own(plan, strutils_format("  Compiling %s", unit->source->path));
         jobs[job_count].cmd = &unit->cmd;
         job_unit[job_count++] = unit;
     }
@@ -575,8 +661,8 @@ bool build_plan_run(build_plan_t *plan, const build_options_t *options) {
         return false;
 
     build_layout_t *layout = &plan->layout;
-    bool need_c = build_layout_uses_lang(layout, BUILD_LANG_C, options->with_tests);
-    bool need_cxx = build_layout_uses_lang(layout, BUILD_LANG_CXX, options->with_tests);
+    bool need_c = build_layout_uses_lang(layout, BUILD_LANG_C);
+    bool need_cxx = build_layout_uses_lang(layout, BUILD_LANG_CXX);
 
     if (!build_toolchain_init(&plan->toolchain, need_c, need_cxx) ||
         !build_toolchain_resolve_deps(&plan->toolchain, &layout->config.dependencies) ||

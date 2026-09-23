@@ -12,14 +12,6 @@ typedef struct {
     bool with_tests;    // also compile and link the tests in tests/
 } build_options_t;
 
-typedef enum {
-    BUILD_ARTIFACT_EXE,     // src/main.* -> build/<profile>/<name>
-    BUILD_ARTIFACT_BIN,     // src/bin/<x>.* -> build/<profile>/<x>
-    BUILD_ARTIFACT_LIB,     // project without main -> build/<profile>/lib<name>.a
-    BUILD_ARTIFACT_TEST,    // tests/<x>.* -> build/<profile>/tests/<x>
-    BUILD_ARTIFACT_SHARED,  // project without main -> build/<profile>/lib<name>.so (.dylib, .dll)
-} build_artifact_kind_t;
-
 typedef struct {
     build_artifact_kind_t kind;
     char *name;

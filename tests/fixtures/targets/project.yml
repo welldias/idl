@@ -1,0 +1,31 @@
+project:
+  name: targets
+  requires-c: C17
+build:
+  defines: [GLOBAL=1]
+targets:
+  base:
+    type: static-library
+    sources: [modules/base/*.c]
+    public-include-dirs: [modules/base/include]
+  core:
+    type: static-library
+    sources: [modules/core/**/*.c]
+    exclude: [modules/core/legacy/**]
+    include-dirs: [modules/core/private]
+    public-include-dirs: [modules/core/include]
+    defines: [CORE_LEVEL=2]
+    libs: [m]
+    link: [base]
+  plugin:
+    type: shared-library
+    sources: [plugins/*.c]
+    link: [core]
+  targets:
+    type: executable
+    sources: [apps/main/*.c]
+    link: [core]
+  host:
+    type: executable
+    sources: [apps/host.c]
+    link: [plugin]

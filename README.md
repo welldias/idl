@@ -19,6 +19,41 @@ Without `src/main.*`, the project is a library: idl builds both the static `lib<
 
 See [examples/executable](examples/executable) and [examples/library](examples/library) for complete projects built without any configuration file.
 
+## Projects that don't follow the convention
+
+When the sources are spread over other directories, or the project produces several
+libraries and executables, declare them in the `targets:` section of `project.yml`. With
+`targets:`, idl builds exactly what is declared and the directory convention is not used.
+
+```yaml
+project:
+  name: app
+targets:
+  core:
+    type: static-library       # executable | static-library | shared-library | library (static + shared)
+    sources: [lib/core/**/*.c, lib/common.c]
+    exclude: [lib/core/legacy/**]
+    include-dirs: [lib/core/private]       # this target only
+    public-include-dirs: [lib/core/include] # this target and whoever links it
+    defines: [CORE=1]
+    cflags: []
+    cxxflags: []
+    libs: [m]
+  app:
+    type: executable
+    sources: [apps/*.c]
+    link: [core]               # other targets of the project
+    ldflags: []
+```
+
+- `sources` takes files and globs (`*`, `?`, `**`). `exclude` removes sources that match its globs.
+- `link` handles the link order, `-fPIC` for code that goes into shared libraries, and the rpath for the project's own shared libraries.
+- The `build:` section and `project.dependencies` apply to every target.
+- An executable and a library may have the same name (`lua` and `liblua.a`); `link: [lua]` always refers to the library.
+- `idl run --bin <target>` runs one of the executables.
+
+See [examples/configured](examples/configured).
+
 ## Usage
 
 ```sh

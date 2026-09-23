@@ -6,114 +6,6 @@ typedef struct {
     bool ok;
 } build_layout_scan_t;
 
-static const struct {
-    const char *ext;
-    build_lang_t lang;
-} build_source_exts[] = {
-    { ".c", BUILD_LANG_C },
-    { ".cpp", BUILD_LANG_CXX },
-    { ".cc", BUILD_LANG_CXX },
-    { ".cxx", BUILD_LANG_CXX },
-    { ".c++", BUILD_LANG_CXX },
-};
-
-bool build_source_lang(const char *path, build_lang_t *lang) {
-    RETURN_VAL_IF_FAIL(path, false);
-
-    const char *dot = strrchr(path, '.');
-    const char *slash = strrchr(path, '/');
-    if (!dot || (slash && dot < slash))
-        return false;
-
-    for (word i = 0; i < SIZE_OF_ARRAY(build_source_exts); i++) {
-        if (strcmp(dot, build_source_exts[i].ext) == 0) {
-            if (lang)
-                *lang = build_source_exts[i].lang;
-            return true;
-        }
-    }
-    return false;
-}
-
-static const struct {
-    const char *suffix;
-    unsigned os;
-} build_os_suffixes[] = {
-    { "_win", BUILD_OS_WINDOWS },
-    { "_linux", BUILD_OS_LINUX },
-    { "_macos", BUILD_OS_MACOS },
-    { "_unix", BUILD_OS_UNIX },
-};
-
-unsigned build_os_host(void) {
-#if defined(_WIN32)
-    return BUILD_OS_WINDOWS;
-#elif defined(__APPLE__)
-    return BUILD_OS_MACOS | BUILD_OS_UNIX;
-#elif defined(__linux__)
-    return BUILD_OS_LINUX | BUILD_OS_UNIX;
-#else
-    return BUILD_OS_UNIX;
-#endif
-}
-
-bool build_source_for_os(const char *path, unsigned os) {
-    RETURN_VAL_IF_FAIL(path, false);
-
-    const char *name = strrchr(path, '/');
-    name = name ? name + 1 : path;
-    const char *dot = strrchr(name, '.');
-    word stem_len = dot ? (word)(dot - name) : strlen(name);
-
-    for (word i = 0; i < SIZE_OF_ARRAY(build_os_suffixes); i++) {
-        word suffix_len = strlen(build_os_suffixes[i].suffix);
-        if (stem_len > suffix_len && strncmp(name + stem_len - suffix_len, build_os_suffixes[i].suffix, suffix_len) == 0)
-            return (os & build_os_suffixes[i].os) != 0;
-    }
-    return true;
-}
-
-static bool build_sources_add(build_sources_t *sources, const char *path, build_lang_t lang) {
-    if (sources->count == sources->capacity) {
-        word capacity = sources->capacity ? sources->capacity * 2 : 16;
-        build_source_t *items = (build_source_t *)realloc(sources->items, capacity * sizeof(build_source_t));
-        if (!items) {
-            LOG_FATAL_NOT_ENOUGH_MEMORY();
-            return false;
-        }
-        sources->items = items;
-        sources->capacity = capacity;
-    }
-
-    const char *name = strrchr(path, '/');
-    name = name ? name + 1 : path;
-    const char *dot = strrchr(name, '.');
-
-    build_source_t *source = &sources->items[sources->count++];
-    source->path = strutils_strndup(path, strlen(path));
-    source->stem = strutils_strndup(name, dot ? (int)(dot - name) : (int)strlen(name));
-    source->lang = lang;
-    return source->path && source->stem;
-}
-
-static void build_sources_clear(build_sources_t *sources) {
-    for (word i = 0; i < sources->count; i++) {
-        free(sources->items[i].path);
-        free(sources->items[i].stem);
-    }
-    free(sources->items);
-    memset(sources, 0, sizeof(build_sources_t));
-}
-
-static int build_source_cmp(const void *a, const void *b) {
-    return strcmp(((const build_source_t *)a)->path, ((const build_source_t *)b)->path);
-}
-
-static void build_sources_sort(build_sources_t *sources) {
-    if (sources->count > 1)
-        qsort(sources->items, sources->count, sizeof(build_source_t), build_source_cmp);
-}
-
 static void build_layout_on_file(const char *full_path, void *arg) {
     build_layout_scan_t *scan = (build_layout_scan_t *)arg;
     build_layout_t *layout = scan->layout;
@@ -185,23 +77,66 @@ bool build_layout_is_project(void) {
     return platform_dir_exists(BUILD_SRC_DIR) || project_file_exist();
 }
 
-bool build_layout_load(build_layout_t *layout, bool with_tests) {
-    RETURN_VAL_IF_FAIL(layout, false);
+/* The source group of src/ that the convention's executables link. Not a valid file stem,
+   so it cannot clash with the name of an executable. */
+#define BUILD_LAYOUT_OBJECTS "src/"
 
-    memset(layout, 0, sizeof(build_layout_t));
-    project_file_config_init(&layout->config);
+static bool build_layout_add_exe(build_layout_t *layout, build_source_t *source, const char *name,
+                                 build_artifact_kind_t kind, const char *link) {
+    build_target_t *target = build_targets_add(&layout->targets, name, BUILD_TARGET_EXECUTABLE);
+    if (!target)
+        return false;
 
-    if (project_file_exist()) {
-        if (!project_file_read(&layout->config))
+    target->exe_kind = kind;
+    if (link)
+        list_add(&target->link, strutils_format("%s", link));
+    return build_sources_add(&target->sources, source->path, source->lang);
+}
+
+/* The directory convention as targets:
+   - with src/main.*: the other sources of src/ are a group of objects that the main
+     executable, each src/bin/ executable and each test link directly;
+   - without it: those sources are a library (static and shared), whose objects the
+     executables and tests also link directly. */
+static bool build_layout_convention_targets(build_layout_t *layout) {
+    bool library = layout->main.count == 0;
+    const char *link = nullptr;
+
+    if (layout->lib.count) {
+        build_target_t *target = build_targets_add(&layout->targets, library ? layout->name : BUILD_LAYOUT_OBJECTS,
+                                                   library ? BUILD_TARGET_LIBRARY : BUILD_TARGET_OBJECTS);
+        if (!target)
             return false;
-        layout->has_config = true;
+        target->link_objects = true;
+        for (word i = 0; i < layout->lib.count; i++) {
+            if (!build_sources_add(&target->sources, layout->lib.items[i].path, layout->lib.items[i].lang))
+                return false;
+        }
+        link = target->name;
     }
 
-    if (layout->config.name && layout->config.name[0])
-        layout->name = strutils_strndup(layout->config.name, strlen(layout->config.name));
-    else
-        layout->name = build_layout_dir_name();
+    if (layout->main.count && !build_layout_add_exe(layout, &layout->main.items[0], layout->name, BUILD_ARTIFACT_EXE, link))
+        return false;
+    for (word i = 0; i < layout->bins.count; i++) {
+        if (!build_layout_add_exe(layout, &layout->bins.items[i], layout->bins.items[i].stem, BUILD_ARTIFACT_BIN, link))
+            return false;
+    }
+    for (word i = 0; i < layout->tests.count; i++) {
+        if (!build_layout_add_exe(layout, &layout->tests.items[i], layout->tests.items[i].stem, BUILD_ARTIFACT_TEST, link))
+            return false;
+    }
 
+    // The convention's include path: src/ and, when it exists, include/.
+    for (word t = 0; t < layout->targets.count; t++) {
+        build_target_t *target = &layout->targets.items[t];
+        list_add(&target->include_dirs, strutils_format("%s", BUILD_SRC_DIR));
+        if (layout->has_include_dir)
+            list_add(&target->include_dirs, strutils_format("%s", BUILD_INCLUDE_DIR));
+    }
+    return true;
+}
+
+static bool build_layout_load_convention(build_layout_t *layout, bool with_tests) {
     if (!platform_dir_exists(BUILD_SRC_DIR)) {
         log_error("Directory %s/ not found. The project sources must be in %s/.", BUILD_SRC_DIR, BUILD_SRC_DIR);
         return false;
@@ -237,7 +172,30 @@ bool build_layout_load(build_layout_t *layout, bool with_tests) {
         }
     }
 
-    return true;
+    return build_layout_convention_targets(layout);
+}
+
+bool build_layout_load(build_layout_t *layout, bool with_tests) {
+    RETURN_VAL_IF_FAIL(layout, false);
+
+    memset(layout, 0, sizeof(build_layout_t));
+    project_file_config_init(&layout->config);
+
+    if (project_file_exist()) {
+        if (!project_file_read(&layout->config))
+            return false;
+        layout->has_config = true;
+    }
+
+    if (layout->config.name && layout->config.name[0])
+        layout->name = strutils_strndup(layout->config.name, strlen(layout->config.name));
+    else
+        layout->name = build_layout_dir_name();
+
+    layout->has_targets = layout->config.targets.count > 0;
+    bool loaded = layout->has_targets ? build_targets_from_config(&layout->targets, &layout->config)
+                                      : build_layout_load_convention(layout, with_tests);
+    return loaded && build_targets_resolve(&layout->targets);
 }
 
 void build_layout_clear(build_layout_t *layout) {
@@ -249,16 +207,17 @@ void build_layout_clear(build_layout_t *layout) {
     build_sources_clear(&layout->lib);
     build_sources_clear(&layout->bins);
     build_sources_clear(&layout->tests);
+    build_targets_clear(&layout->targets);
     memset(layout, 0, sizeof(build_layout_t));
 }
 
-bool build_layout_uses_lang(build_layout_t *layout, build_lang_t lang, bool with_tests) {
-    build_sources_t *groups[] = { &layout->main, &layout->lib, &layout->bins, &layout->tests };
-    word group_count = with_tests ? 4 : 3;
+bool build_layout_uses_lang(build_layout_t *layout, build_lang_t lang) {
+    RETURN_VAL_IF_FAIL(layout, false);
 
-    for (word g = 0; g < group_count; g++) {
-        for (word i = 0; i < groups[g]->count; i++) {
-            if (groups[g]->items[i].lang == lang)
+    for (word t = 0; t < layout->targets.count; t++) {
+        build_sources_t *sources = &layout->targets.items[t].sources;
+        for (word i = 0; i < sources->count; i++) {
+            if (sources->items[i].lang == lang)
                 return true;
         }
     }
